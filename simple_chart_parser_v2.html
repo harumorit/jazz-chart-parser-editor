@@ -1,0 +1,325 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>簡易 Jazz Chart Parser v2</title>
+<style>
+  :root{
+    --bg:#f6f7fb; --card:#fff; --ink:#1f2937; --muted:#6b7280; --line:#e5e7eb;
+    --accent:#2563eb; --soft:#eff6ff; --danger:#dc2626; --ok:#059669; --warn:#d97706;
+    --cat:#1d4ed8; --sub:#7c3aed;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:var(--bg);color:var(--ink)}
+  header{padding:28px 20px 18px;background:linear-gradient(135deg,#111827,#1e3a8a);color:white}
+  header h1{margin:0 0 8px;font-size:28px;letter-spacing:.02em}
+  header p{margin:0;opacity:.9;line-height:1.6}
+  main{max-width:1180px;margin:0 auto;padding:22px 16px 44px}
+  .grid{display:grid;grid-template-columns:1fr 350px;gap:16px;align-items:start}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:16px;box-shadow:0 8px 24px rgba(15,23,42,.06);padding:18px;margin-bottom:16px}
+  h2{font-size:19px;margin:0 0 14px}
+  h3{font-size:16px;margin:18px 0 10px}
+  textarea{width:100%;min-height:72px;border:1px solid var(--line);border-radius:12px;padding:12px;font-size:16px;line-height:1.5;resize:vertical}
+  button{border:0;border-radius:999px;padding:10px 14px;font-weight:700;cursor:pointer;background:var(--accent);color:#fff;margin:6px 6px 0 0}
+  button.secondary{background:#e5e7eb;color:#111827}
+  button.ghost{background:transparent;border:1px solid var(--line);color:#374151}
+  .hint{font-size:13px;color:var(--muted);line-height:1.7;margin-top:8px}
+  .pill{display:inline-block;border-radius:999px;padding:4px 9px;font-size:12px;font-weight:700;margin:2px;background:#eef2ff;color:#3730a3}
+  .flow{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px}
+  .arrow{color:var(--muted);font-weight:700}
+  .step{border-left:5px solid var(--accent);padding:14px 14px 12px;background:#fff;border-radius:14px;margin:14px 0;border-top:1px solid var(--line);border-right:1px solid var(--line);border-bottom:1px solid var(--line)}
+  .stepTitle{display:flex;justify-content:space-between;gap:12px;align-items:center;margin-bottom:10px}
+  .stepTitle strong{font-size:17px}
+  .count{font-size:12px;color:var(--muted);background:#f3f4f6;border-radius:999px;padding:4px 8px}
+  .treeWrap{display:grid;grid-template-columns:1fr;gap:10px}
+  .treeCard{background:#fafafa;border:1px solid var(--line);border-radius:12px;padding:12px;overflow:auto}
+  .treeHead{font-size:13px;color:var(--muted);margin-bottom:8px;display:flex;justify-content:space-between;gap:8px;align-items:center;flex-wrap:wrap}
+  .treeText{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;font-size:13px;line-height:1.45;white-space:pre;color:#111827;background:white;border:1px solid var(--line);border-radius:10px;padding:10px;margin-top:10px}
+  .expect{color:var(--danger);font-weight:900}
+  .token{color:var(--ok);font-weight:800}
+  .cat{color:var(--cat);font-weight:800}
+  .expectList{margin-top:8px;font-size:13px;color:#374151}
+  .legend{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
+  .legend span{font-size:12px;border:1px solid var(--line);background:#fff;border-radius:999px;padding:5px 9px}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th,td{border-bottom:1px solid var(--line);padding:8px;text-align:left;vertical-align:top}
+  th{color:#374151;background:#f9fafb}
+  code{background:#f3f4f6;border-radius:6px;padding:1px 5px}
+  .warn{color:var(--warn);font-weight:700}
+  .empty{color:var(--muted);padding:14px;border:1px dashed var(--line);border-radius:12px;background:#fafafa}
+
+  /* v2: 構文木ビュー。未確定ノードにも必ず ? を表示する */
+  .treeVisual{overflow:auto;padding:10px 4px 2px;background:white;border:1px solid var(--line);border-radius:12px}
+  .nodeTree,.nodeTree ul{margin:0;padding:0;list-style:none;position:relative;text-align:center;white-space:nowrap}
+  .nodeTree ul{padding-top:18px;display:flex;justify-content:center;gap:12px}
+  .nodeTree li{display:inline-flex;flex-direction:column;align-items:center;position:relative;vertical-align:top;padding:0 4px}
+  .nodeTree li::before{content:"";position:absolute;top:-18px;left:50%;height:18px;border-left:1px solid #cbd5e1}
+  .nodeTree > li::before{display:none}
+  .nodeTree ul::before{content:"";position:absolute;top:0;left:12%;right:12%;border-top:1px solid #cbd5e1}
+  .nodeTree li:only-child::before,.nodeTree ul:has(> li:only-child)::before{display:none}
+  .nodeBox{display:inline-flex;gap:5px;align-items:center;justify-content:center;min-width:54px;max-width:140px;padding:6px 8px;border:1px solid #bfdbfe;background:#eff6ff;border-radius:10px;font-size:13px;font-weight:800;color:#1e40af}
+  .nodeBox.tokenNode{border-color:#bbf7d0;background:#f0fdf4;color:#166534}
+  .nodeBox.expectNode{border-color:#fecaca;background:#fff1f2;color:#b91c1c}
+  .nodeBox .small{font-size:11px;color:var(--muted);font-weight:700}
+  .viewLabel{font-size:12px;color:var(--muted);font-weight:700;margin:8px 0 6px}
+  @media(max-width:900px){.grid{grid-template-columns:1fr} header h1{font-size:24px}}
+</style>
+</head>
+<body>
+<header>
+  <h1>簡易 Jazz Chart Parser v2</h1>
+  <p>コード進行を左から順に読み，文法ルールを適用して構文木候補を生成するデモです。構文木ビューでも赤い <b>?IC</b> や <b>?VC</b> が未確定ノードとして表示されます。</p>
+</header>
+<main>
+  <div class="grid">
+    <section>
+      <div class="card">
+        <h2>1. コード進行を入力</h2>
+        <textarea id="input">Dmin7 G7 Cmaj7</textarea>
+        <div>
+          <button onclick="parseInput()">解析する</button>
+          <button class="secondary" onclick="setExample('Dmin7 G7 Cmaj7')">II-V-I</button>
+          <button class="secondary" onclick="setExample('Cmaj7 D7 Dmin7 G7 Cmaj7')">Take The A Train</button>
+          <button class="secondary" onclick="setExample('Dmin7 G7 Emin7 A7 Amin7 D7 Abmin7 Db7 Cmaj7')">Satin Doll</button>
+        </div>
+        <p class="hint">使える表記例：<code>Dmin7</code>, <code>Dm7</code>, <code>D-7</code>, <code>G7</code>, <code>Cmaj7</code>, <code>CM7</code>, <code>Emin7</code>, <code>A7</code>, <code>Amin7</code>, <code>Abmin7</code>, <code>Db7</code></p>
+      </div>
+
+      <div class="card">
+        <h2>2. 解析結果</h2>
+        <div id="flow" class="flow"></div>
+        <div id="results" style="margin-top:12px"></div>
+      </div>
+    </section>
+
+    <aside>
+      <div class="card">
+        <h2>見方</h2>
+        <div class="legend">
+          <span><b class="expect">?IC</b> = 未確定ノード</span>
+          <span><b class="token">G7</b> = 入力コード</span>
+          <span><b class="cat">VC</b> = カテゴリ</span>
+        </div>
+        <p class="hint">未確定ノードが残っている木は，まだ続きのコードを期待している状態です。未確定ノードがない木は，その時点で一度まとまった構造です。</p>
+        <p class="hint"><b>v2変更点：</b> テキスト表示だけでなく，構文木ビューにも <code>?</code> 付きの未確定ノードを表示します。</p>
+      </div>
+
+      <div class="card">
+        <h2>文法ルール</h2>
+        <table id="rulesTable"></table>
+        <h3>辞書</h3>
+        <table id="lexTable"></table>
+      </div>
+    </aside>
+  </div>
+</main>
+
+<script>
+const RULES = [
+  {lhs:'S', rhs:['IC'], label:'開始'},
+  {lhs:'IC', rhs:['IC','IC'], label:'延長'},
+  {lhs:'IC', rhs:['VC','IC'], label:'V→Iへの期待'},
+  {lhs:'VC', rhs:['IIC','VC'], label:'II→Vへの期待'},
+  {lhs:'VC', rhs:['VG','VC'], label:'副次的VからV'},
+  {lhs:'VC', rhs:['VGb'], label:'代理'},
+  {lhs:'VD', rhs:['IID','VD'], label:'II→V（D key）'},
+  {lhs:'VG', rhs:['IIG','VG'], label:'II→V（G key）'},
+  {lhs:'VG', rhs:['VD','VG'], label:'V of V'},
+  {lhs:'VGb', rhs:['IIGb','VGb'], label:'II→V（Gb key）'}
+];
+
+const LEXICON = {
+  'CMAJ7':['IC'], 'CM7':['IC'], 'C':['IC'],
+  'DMIN7':['IIC'], 'DM7':['IIC'], 'D-7':['IIC'],
+  'G7':['VC'],
+  'D7':['VG'],
+  'EMIN7':['IID'], 'EM7':['IID'], 'E-7':['IID'],
+  'A7':['VD'],
+  'AMIN7':['IIG'], 'AM7':['IIG'], 'A-7':['IIG'],
+  'ABMIN7':['IIGb'], 'ABM7':['IIGb'], 'AB-7':['IIGb'], 'A♭MIN7':['IIGb'], 'A♭M7':['IIGb'],
+  'DB7':['VGb'], 'D♭7':['VGb'],
+  'GMIN7':['IIF'], 'GM7':['IIF']
+};
+
+function normChord(s){
+  return s.trim().replace(/♭/g,'B').replace(/Δ/g,'MAJ').toUpperCase();
+}
+function termKey(t){ return JSON.stringify(t); }
+function clone(t){ return JSON.parse(JSON.stringify(t)); }
+function tokenTerm(chord, cat){ return {cat, token:chord}; }
+function undecided(cat){ return {cat, undecided:true}; }
+function parentTerm(cat, children){ return {cat, children}; }
+function isUndecided(t){ return !!t.undecided; }
+function isComplete(t){ return !findLeftmostUndecided(t); }
+
+function findLeftmostUndecided(t){
+  if(isUndecided(t)) return t;
+  if(t.children){
+    for(const ch of t.children){
+      const found = findLeftmostUndecided(ch);
+      if(found) return found;
+    }
+  }
+  return null;
+}
+
+function replaceLeftmostUndecided(t, cat, replacement){
+  if(isUndecided(t)){
+    if(t.cat === cat) return clone(replacement);
+    return null;
+  }
+  const out = clone(t);
+  if(out.children){
+    for(let i=0;i<out.children.length;i++){
+      const replaced = replaceLeftmostUndecided(out.children[i], cat, replacement);
+      if(replaced){
+        out.children[i] = replaced;
+        return out;
+      }
+    }
+  }
+  return null;
+}
+
+function buildLocalChart(chord){
+  const cats = LEXICON[normChord(chord)] || [];
+  const terms = [];
+  const seen = new Set();
+  function add(t){
+    const k = termKey(t);
+    if(!seen.has(k) && terms.length < 80){ seen.add(k); terms.push(t); return true; }
+    return false;
+  }
+  cats.forEach(cat => add(tokenTerm(chord, cat)));
+
+  // ルール適用の簡易closure。左再帰で増えすぎないよう最大3周。
+  for(let depth=0; depth<3; depth++){
+    const snapshot = terms.slice();
+    let changed = false;
+    for(const sigma of snapshot){
+      for(const r of RULES){
+        if(r.rhs[0] === sigma.cat){
+          if(r.lhs === r.rhs[0] && depth > 0) continue;
+          const children = [clone(sigma), ...r.rhs.slice(1).map(undecided)];
+          changed = add(parentTerm(r.lhs, children)) || changed;
+        }
+      }
+    }
+    if(!changed) break;
+  }
+  return terms;
+}
+
+function parse(chords){
+  let global = [undecided('S')];
+  const steps = [];
+  chords.forEach((chord, idx) => {
+    const local = buildLocalChart(chord);
+    const next = [];
+    const seen = new Set();
+    for(const phi of global){
+      const lut = findLeftmostUndecided(phi);
+      if(!lut) continue;
+      for(const psi of local){
+        if(psi.cat === lut.cat){
+          const replaced = replaceLeftmostUndecided(phi, lut.cat, psi);
+          if(replaced){
+            const k = termKey(replaced);
+            if(!seen.has(k) && next.length < 20){ seen.add(k); next.push(replaced); }
+          }
+        }
+      }
+    }
+    global = next;
+    steps.push({idx:idx+1, chord, local, global});
+  });
+  return steps;
+}
+
+function expectations(t){
+  const arr = [];
+  function walk(x){
+    if(isUndecided(x)) arr.push(x.cat);
+    if(x.children) x.children.forEach(walk);
+  }
+  walk(t);
+  return arr;
+}
+
+function termToText(t, indent=''){
+  if(isUndecided(t)) return `${indent}?${t.cat}`;
+  if(t.token) return `${indent}${t.cat}: ${t.token}`;
+  let s = `${indent}${t.cat}`;
+  if(t.children){
+    for(const ch of t.children){ s += `\n${termToText(ch, indent + '  ')}`; }
+  }
+  return s;
+}
+
+function escapeHtml(s){ return String(s).replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])); }
+function colorizeTreeText(s){
+  return escapeHtml(s)
+    .replace(/\?([A-Za-z0-9♭]+)/g, '<span class="expect">?$1</span>')
+    .replace(/(Cmaj7|CM7|Dmin7|Dm7|D-7|G7|D7|Emin7|Em7|E-7|A7|Amin7|Am7|A-7|Abmin7|Abm7|Ab-7|Db7)/gi, '<span class="token">$1</span>')
+    .replace(/\b(S|IC|VC|IIC|VG|VD|IID|IIG|VGb|IIGb|IIF)\b/g, '<span class="cat">$1</span>');
+}
+
+// v2: 構文木を図っぽくHTMLで描画。未確定ノードは必ず ?cat にする。
+function termToVisualHtml(t){
+  function nodeLabel(x){
+    if(isUndecided(x)) return `<span class="nodeBox expectNode">?${escapeHtml(x.cat)}</span>`;
+    if(x.token) return `<span class="nodeBox tokenNode"><span>${escapeHtml(x.cat)}</span><span class="small">${escapeHtml(x.token)}</span></span>`;
+    return `<span class="nodeBox">${escapeHtml(x.cat)}</span>`;
+  }
+  function rec(x){
+    let html = `<li>${nodeLabel(x)}`;
+    if(x.children && x.children.length){
+      html += '<ul>' + x.children.map(rec).join('') + '</ul>';
+    }
+    html += '</li>';
+    return html;
+  }
+  return `<ul class="nodeTree">${rec(t)}</ul>`;
+}
+
+function parseInput(){
+  const raw = document.getElementById('input').value.trim();
+  const chords = raw.split(/[\s,→]+/).filter(Boolean);
+  const results = document.getElementById('results');
+  const flow = document.getElementById('flow');
+  flow.innerHTML = chords.map((c,i)=>`<span class="pill">${escapeHtml(c)}</span>${i<chords.length-1?'<span class="arrow">→</span>':''}`).join('');
+  if(!chords.length){ results.innerHTML='<div class="empty">コードを入力してください。</div>'; return; }
+  const steps = parse(chords);
+  let html = '';
+  steps.forEach(step => {
+    html += `<div class="step"><div class="stepTitle"><strong>Step ${step.idx}: ${escapeHtml(step.chord)} を入力</strong><span class="count">候補木 ${step.global.length} 個 / local ${step.local.length} 個</span></div>`;
+    if(step.global.length === 0){
+      html += `<div class="empty"><span class="warn">解析候補がありません。</span><br>辞書または文法ルールにこの流れを処理する規則がない可能性があります。</div>`;
+    }else{
+      html += `<div class="treeWrap">`;
+      step.global.slice(0,8).forEach((t,i)=>{
+        const exps = expectations(t);
+        html += `<div class="treeCard"><div class="treeHead"><span>候補 ${i+1} ${isComplete(t)?'（sub-complete）':'（active）'}</span><span>${exps.length ? '期待: '+exps.map(e=>'?'+e).join(', ') : '未確定なし'}</span></div>`;
+        html += `<div class="viewLabel">構文木ビュー</div><div class="treeVisual">${termToVisualHtml(t)}</div>`;
+        html += `<div class="viewLabel">テキスト表示</div><div class="treeText">${colorizeTreeText(termToText(t))}</div></div>`;
+      });
+      html += `</div>`;
+    }
+    html += `</div>`;
+  });
+  results.innerHTML = html;
+}
+
+function setExample(s){ document.getElementById('input').value = s; parseInput(); }
+
+function renderTables(){
+  document.getElementById('rulesTable').innerHTML = '<tr><th>規則</th><th>意味</th></tr>' + RULES.map(r=>`<tr><td><code>${r.lhs} → ${r.rhs.join(' ')}</code></td><td>${r.label}</td></tr>`).join('');
+  const rows = Object.entries(LEXICON).map(([k,v])=>`<tr><td><code>${k}</code></td><td>${v.join(', ')}</td></tr>`).join('');
+  document.getElementById('lexTable').innerHTML = '<tr><th>コード</th><th>カテゴリ</th></tr>' + rows;
+}
+renderTables();
+parseInput();
+</script>
+</body>
+</html>
