@@ -1,0 +1,308 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>構文木エディタ v1</title>
+<style>
+:root{
+  --bg:#f6f7fb;--card:#fff;--ink:#111827;--muted:#6b7280;--line:#e5e7eb;
+  --accent:#2563eb;--accent2:#1e40af;--soft:#eff6ff;--danger:#dc2626;--ok:#059669;--warn:#d97706;
+}
+*{box-sizing:border-box}
+body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:var(--bg);color:var(--ink)}
+header{padding:26px 20px 18px;background:linear-gradient(135deg,#111827,#1e3a8a);color:#fff}
+header h1{margin:0 0 8px;font-size:28px;letter-spacing:.02em}
+header p{margin:0;opacity:.92;line-height:1.6}
+main{max-width:1180px;margin:0 auto;padding:20px 14px 42px}
+.grid{display:grid;grid-template-columns:1fr 380px;gap:16px;align-items:start}
+.card{background:var(--card);border:1px solid var(--line);border-radius:16px;box-shadow:0 8px 24px rgba(15,23,42,.06);padding:16px;margin-bottom:16px}
+h2{font-size:18px;margin:0 0 12px} h3{font-size:15px;margin:16px 0 8px;color:#374151}
+textarea,input,select{width:100%;border:1px solid var(--line);border-radius:12px;padding:10px;font-size:14px;background:#fff;color:#111827}
+textarea{min-height:130px;resize:vertical;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;line-height:1.45}
+button{border:0;border-radius:999px;padding:9px 13px;font-weight:700;cursor:pointer;background:var(--accent);color:#fff;margin:5px 5px 0 0}
+button:hover{background:var(--accent2)}
+button.secondary{background:#e5e7eb;color:#111827} button.secondary:hover{background:#d1d5db}
+button.danger{background:var(--danger)} button.ok{background:var(--ok)} button.warn{background:var(--warn)}
+.hint{font-size:13px;color:var(--muted);line-height:1.65;margin:8px 0 0}
+.pill{display:inline-block;border-radius:999px;padding:4px 9px;font-size:12px;font-weight:700;background:#eef2ff;color:#3730a3;margin:2px}
+.toolbar{display:flex;flex-wrap:wrap;gap:0;margin-top:8px}
+.treeBox{background:#fafafa;border:1px solid var(--line);border-radius:14px;padding:14px;overflow:auto;min-height:320px;max-height:650px}
+.nodeLine{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;font-size:14px;line-height:1.6;white-space:pre;cursor:pointer;border-radius:8px;padding:2px 6px;display:block;width:max-content;min-width:100%}
+.nodeLine:hover{background:#eef2ff}.nodeLine.selected{background:#dbeafe;outline:2px solid #60a5fa}
+.cat{color:#1d4ed8;font-weight:800}.token{color:#059669;font-weight:800}.expect{color:#dc2626;font-weight:900}.rule{color:#7c3aed;font-weight:700}
+.meta{font-size:12px;color:var(--muted)}
+.sideRow{display:grid;grid-template-columns:110px 1fr;gap:8px;align-items:center;margin:8px 0}
+pre{background:#0f172a;color:#e5e7eb;border-radius:12px;padding:12px;overflow:auto;font-size:12px;line-height:1.5;max-height:260px}
+.notice{border-left:5px solid var(--accent);background:#eff6ff;border-radius:12px;padding:12px;font-size:13px;line-height:1.7;color:#1f2937}
+.small{font-size:12px;color:var(--muted);line-height:1.6}.split{display:grid;grid-template-columns:1fr 1fr;gap:10px}.hidden{display:none}
+@media(max-width:960px){.grid{grid-template-columns:1fr} header h1{font-size:23px}.split{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<header>
+<h1>構文木エディタ v1</h1>
+<p>Chart Parserが出力した構文木JSONを読み込み，ノードの編集・部分木の置換・コード列の再生成を行うための試作版です。</p>
+</header>
+<main>
+<div class="grid">
+<section>
+  <div class="card">
+    <h2>1. 構文木JSONを読み込む</h2>
+    <textarea id="jsonInput"></textarea>
+    <div class="toolbar">
+      <button onclick="loadJson()">JSONを読み込む</button>
+      <button class="secondary" onclick="loadExample('ii-v-i')">例：II-V-I</button>
+      <button class="secondary" onclick="loadExample('active')">例：未確定あり</button>
+      <button class="secondary" onclick="loadExample('train')">例：Take The A Train風</button>
+      <button class="ghost secondary" onclick="document.getElementById('fileInput').click()">JSONファイル選択</button>
+      <input id="fileInput" type="file" accept=".json,.txt,application/json" class="hidden" onchange="readFile(event)">
+    </div>
+    <p class="hint">Parser側の「最終候補木をJSON保存」や「全ステップJSON保存」から出したJSONをここに貼り付けて使う想定です。</p>
+  </div>
+
+  <div class="card">
+    <h2>2. 構文木ビュー</h2>
+    <div id="treeBox" class="treeBox"></div>
+    <div class="toolbar">
+      <button class="ok" onclick="exportJson()">JSON出力</button>
+      <button class="ok" onclick="exportLeaves()">コード列出力</button>
+      <button class="secondary" onclick="downloadJson()">JSONダウンロード</button>
+      <button class="secondary" onclick="downloadTxt()">コード列txt</button>
+    </div>
+    <p class="hint"><span class="expect">?IC</span> は未確定ノード，<span class="token">Cmaj7</span> は実際の入力コード，<span class="cat">IC</span> はカテゴリです。クリックしたノードを右側で編集できます。</p>
+  </div>
+
+  <div class="card">
+    <h2>3. 出力</h2>
+    <div class="split">
+      <div><h3>JSON</h3><pre id="jsonOutput"></pre></div>
+      <div><h3>コード列</h3><pre id="leavesOutput"></pre></div>
+    </div>
+  </div>
+</section>
+
+<aside>
+  <div class="card">
+    <h2>選択中ノード</h2>
+    <div id="selectedInfo" class="notice">まだノードが選択されていません。</div>
+    <h3>ノード編集</h3>
+    <div class="sideRow"><label>カテゴリ</label><input id="editCat" placeholder="IC / VC / IIC など"></div>
+    <div class="sideRow"><label>コード</label><input id="editToken" placeholder="Cmaj7 など。内部ノードなら空"></div>
+    <div class="sideRow"><label>未確定</label><select id="editUndecided"><option value="false">false</option><option value="true">true</option></select></div>
+    <div class="sideRow"><label>規則ラベル</label><input id="editRule" placeholder="II→Vへの期待 など"></div>
+    <div class="toolbar">
+      <button onclick="applyEdit()">変更を反映</button>
+      <button class="secondary" onclick="addChild()">子ノード追加</button>
+      <button class="danger" onclick="deleteNode()">削除</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>部分木の置換</h2>
+    <p class="small">選択中ノードを，よく使う構造に置き換えます。編曲ルールの試作として使えます。</p>
+    <button onclick="replaceSubtree('ii-v-i')">II-V-Iに置換</button>
+    <button onclick="replaceSubtree('v-i')">V-Iに置換</button>
+    <button onclick="replaceSubtree('tritone')">裏コード風に置換</button>
+    <button onclick="replaceSubtree('emptyExpect')">未確定ノードに置換</button>
+    <h3>置換の意味</h3>
+    <p class="hint">例：V-I置換は「緊張→解決」の構造，II-V-I置換は「準備→緊張→解決」の構造を木として入れます。</p>
+  </div>
+
+  <div class="card">
+    <h2>研究上の位置づけ</h2>
+    <p class="hint">このエディタは，Parserが出力した構文木を編集可能な中間表現として扱うためのものです。今後は，編集後の構文木からコード進行を再生成し，編曲案として利用する流れを目指します。</p>
+    <div class="notice">コード進行 → Chart Parser → 構文木 → 構文木エディタ → 編集後コード列 → 編曲案</div>
+  </div>
+</aside>
+</div>
+</main>
+<script>
+let tree = null;
+let selectedPath = [];
+
+const examples = {
+  'ii-v-i': {cat:'IC', rule:'V→Iへの期待', children:[
+    {cat:'VC', rule:'II→Vへの期待', children:[
+      {cat:'IIC', token:'Dmin7'},
+      {cat:'VC', token:'G7'}
+    ]},
+    {cat:'IC', token:'Cmaj7'}
+  ]},
+  'active': {cat:'IC', rule:'V→Iへの期待', children:[
+    {cat:'VC', rule:'II→Vへの期待', children:[
+      {cat:'IIC', token:'Dmin7'},
+      {cat:'VC', token:'G7'}
+    ]},
+    {cat:'IC', undecided:true}
+  ]},
+  'train': {cat:'S', children:[{cat:'IC', rule:'延長', children:[
+    {cat:'IC', token:'Cmaj7'},
+    {cat:'IC', rule:'V→Iへの期待', children:[
+      {cat:'VC', rule:'副次的VからV', children:[
+        {cat:'VG', token:'D7'},
+        {cat:'VC', rule:'II→Vへの期待', children:[
+          {cat:'IIC', token:'Dmin7'},
+          {cat:'VC', token:'G7'}
+        ]}
+      ]},
+      {cat:'IC', token:'Cmaj7'}
+    ]}
+  ]}]}
+};
+
+function clone(x){ return JSON.parse(JSON.stringify(x)); }
+function loadExample(name){
+  tree = clone(examples[name]);
+  document.getElementById('jsonInput').value = JSON.stringify(tree, null, 2);
+  selectedPath = [];
+  render();
+}
+function normalizeLoaded(obj){
+  if(Array.isArray(obj)) return obj[0] || null;
+  if(obj && obj.tree) return obj.tree;
+  if(obj && obj.finalTree) return obj.finalTree;
+  if(obj && obj.global && Array.isArray(obj.global)) return obj.global[0];
+  if(obj && obj.steps && Array.isArray(obj.steps) && obj.steps.length){
+    const last = obj.steps[obj.steps.length-1];
+    if(last.global && last.global.length) return last.global[0];
+  }
+  return obj;
+}
+function loadJson(){
+  try{
+    const obj = JSON.parse(document.getElementById('jsonInput').value);
+    const t = normalizeLoaded(obj);
+    if(!t || !t.cat && !t.label){ throw new Error('tree object not found'); }
+    tree = convertLabelTree(t);
+    selectedPath = [];
+    render();
+  }catch(e){ alert('JSONを読み込めませんでした: '+e.message); }
+}
+function convertLabelTree(t){
+  // JHT系の {label, children} も簡易parser系の {cat, token, children} も受ける
+  const out = {};
+  out.cat = t.cat || t.label || 'NODE';
+  if(t.token) out.token = t.token;
+  if(t.undecided) out.undecided = true;
+  if(t.rule) out.rule = t.rule;
+  if(Array.isArray(t.children) && t.children.length){ out.children = t.children.map(convertLabelTree); }
+  return out;
+}
+function readFile(ev){
+  const file = ev.target.files[0]; if(!file) return;
+  const reader = new FileReader();
+  reader.onload = () => { document.getElementById('jsonInput').value = reader.result; loadJson(); };
+  reader.readAsText(file);
+}
+function getNode(path=selectedPath){
+  let n = tree;
+  for(const idx of path){ if(!n.children) return null; n = n.children[idx]; }
+  return n;
+}
+function getParent(path=selectedPath){
+  if(!path.length) return null;
+  return getNode(path.slice(0,-1));
+}
+function pathEq(a,b){ return a.length===b.length && a.every((v,i)=>v===b[i]); }
+function labelNode(n){
+  if(!n) return '';
+  if(n.undecided) return `<span class="expect">?${escapeHtml(n.cat||n.label||'')}</span>`;
+  const cat = `<span class="cat">${escapeHtml(n.cat||n.label||'NODE')}</span>`;
+  const tok = n.token ? `: <span class="token">${escapeHtml(n.token)}</span>` : '';
+  const rule = n.rule ? ` <span class="rule">[${escapeHtml(n.rule)}]</span>` : '';
+  return cat + tok + rule;
+}
+function renderTreeLines(n, path=[], prefix='', isLast=true, lines=[]){
+  const connector = path.length ? (isLast ? '└── ' : '├── ') : '';
+  const selected = pathEq(path, selectedPath) ? ' selected' : '';
+  lines.push(`<div class="nodeLine${selected}" onclick="selectNode([${path.join(',')}])">${escapeHtml(prefix+connector)}${labelNode(n)}</div>`);
+  const childPrefix = prefix + (path.length ? (isLast ? '    ' : '│   ') : '');
+  if(n.children && n.children.length){
+    n.children.forEach((ch,i)=>renderTreeLines(ch, path.concat(i), childPrefix, i===n.children.length-1, lines));
+  }
+  return lines;
+}
+function render(){
+  const box = document.getElementById('treeBox');
+  if(!tree){ box.innerHTML='<div class="hint">JSONを読み込むか，例を選んでください。</div>'; return; }
+  box.innerHTML = renderTreeLines(tree).join('');
+  updateSelectedPanel();
+  updateOutputs(false);
+}
+function selectNode(path){ selectedPath = path; render(); }
+function updateSelectedPanel(){
+  const n = getNode();
+  const info = document.getElementById('selectedInfo');
+  if(!n){ info.textContent='まだノードが選択されていません。'; return; }
+  info.innerHTML = `選択: <b>${selectedPath.length ? selectedPath.join(' > ') : 'root'}</b><br>${labelNode(n)}`;
+  document.getElementById('editCat').value = n.cat || '';
+  document.getElementById('editToken').value = n.token || '';
+  document.getElementById('editUndecided').value = n.undecided ? 'true' : 'false';
+  document.getElementById('editRule').value = n.rule || '';
+}
+function applyEdit(){
+  const n = getNode(); if(!n) return alert('ノードを選択してください');
+  n.cat = document.getElementById('editCat').value.trim() || 'NODE';
+  const tok = document.getElementById('editToken').value.trim();
+  const rule = document.getElementById('editRule').value.trim();
+  n.undecided = document.getElementById('editUndecided').value === 'true';
+  if(tok) n.token = tok; else delete n.token;
+  if(rule) n.rule = rule; else delete n.rule;
+  if(n.undecided){ delete n.token; delete n.children; }
+  render();
+}
+function addChild(){
+  const n = getNode(); if(!n) return alert('ノードを選択してください');
+  if(n.undecided){ n.undecided=false; }
+  if(!n.children) n.children=[];
+  n.children.push({cat:'IC', undecided:true});
+  selectedPath = selectedPath.concat(n.children.length-1);
+  render();
+}
+function deleteNode(){
+  if(!tree) return;
+  if(!selectedPath.length){ if(confirm('rootを削除しますか？')){tree=null; selectedPath=[]; render();} return; }
+  const p = getParent();
+  const idx = selectedPath[selectedPath.length-1];
+  p.children.splice(idx,1);
+  if(!p.children.length) delete p.children;
+  selectedPath = selectedPath.slice(0,-1);
+  render();
+}
+function replaceSubtree(type){
+  const n = getNode(); if(!n) return alert('ノードを選択してください');
+  let repl;
+  if(type==='ii-v-i') repl = clone(examples['ii-v-i']);
+  if(type==='v-i') repl = {cat:'IC', rule:'V→Iへの期待', children:[{cat:'VC', token:'G7'}, {cat:'IC', token:'Cmaj7'}]};
+  if(type==='tritone') repl = {cat:'IC', rule:'裏コード風の解決', children:[{cat:'VGb', token:'Db7'}, {cat:'IC', token:'Cmaj7'}]};
+  if(type==='emptyExpect') repl = {cat:n.cat || 'IC', undecided:true};
+  if(!selectedPath.length){ tree = repl; } else {
+    const p = getParent(); p.children[selectedPath[selectedPath.length-1]] = repl;
+  }
+  render();
+}
+function collectLeaves(n, out=[]){
+  if(!n) return out;
+  if(n.token) out.push(n.token);
+  if(n.children) n.children.forEach(ch=>collectLeaves(ch,out));
+  return out;
+}
+function exportJson(){ updateOutputs(true); }
+function exportLeaves(){ updateOutputs(true); }
+function updateOutputs(showAlert){
+  document.getElementById('jsonOutput').textContent = tree ? JSON.stringify(tree,null,2) : '';
+  document.getElementById('leavesOutput').textContent = tree ? collectLeaves(tree).join(' ') : '';
+}
+function download(filename, text, type='text/plain'){
+  const blob = new Blob([text], {type}); const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob); a.download = filename; a.click(); URL.revokeObjectURL(a.href);
+}
+function downloadJson(){ if(!tree) return alert('木がありません'); download('edited_tree.json', JSON.stringify(tree,null,2), 'application/json'); }
+function downloadTxt(){ if(!tree) return alert('木がありません'); download('edited_chords.txt', collectLeaves(tree).join(' ')); }
+function escapeHtml(s){ return String(s).replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])); }
+
+loadExample('ii-v-i');
+</script>
+</body>
+</html>
