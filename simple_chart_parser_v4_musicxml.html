@@ -1,0 +1,440 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>簡易 Jazz Chart Parser v4 MusicXML対応</title>
+<style>
+  :root{
+    --bg:#f6f7fb; --card:#fff; --ink:#1f2937; --muted:#6b7280; --line:#e5e7eb;
+    --accent:#2563eb; --soft:#eff6ff; --danger:#dc2626; --ok:#059669; --warn:#d97706;
+    --cat:#1d4ed8; --sub:#7c3aed;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:var(--bg);color:var(--ink)}
+  header{padding:28px 20px 18px;background:linear-gradient(135deg,#111827,#1e3a8a);color:white}
+  header h1{margin:0 0 8px;font-size:28px;letter-spacing:.02em}
+  header p{margin:0;opacity:.9;line-height:1.6}
+  main{max-width:1180px;margin:0 auto;padding:22px 16px 44px}
+  .grid{display:grid;grid-template-columns:1fr 360px;gap:16px;align-items:start}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:16px;box-shadow:0 8px 24px rgba(15,23,42,.06);padding:18px;margin-bottom:16px}
+  h2{font-size:19px;margin:0 0 14px}
+  h3{font-size:16px;margin:18px 0 10px}
+  textarea{width:100%;min-height:72px;border:1px solid var(--line);border-radius:12px;padding:12px;font-size:16px;line-height:1.5;resize:vertical}
+  button{border:0;border-radius:999px;padding:10px 14px;font-weight:700;cursor:pointer;background:var(--accent);color:#fff;margin:6px 6px 0 0}
+  button.secondary{background:#e5e7eb;color:#111827}
+  .hint{font-size:13px;color:var(--muted);line-height:1.7;margin-top:8px}
+  .pill{display:inline-block;border-radius:999px;padding:4px 9px;font-size:12px;font-weight:700;margin:2px;background:#eef2ff;color:#3730a3}
+  .flow{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px}
+  .arrow{color:var(--muted);font-weight:700}
+  .step{border-left:5px solid var(--accent);padding:14px 14px 12px;background:#fff;border-radius:14px;margin:14px 0;border-top:1px solid var(--line);border-right:1px solid var(--line);border-bottom:1px solid var(--line)}
+  .stepTitle{display:flex;justify-content:space-between;gap:12px;align-items:center;margin-bottom:10px;flex-wrap:wrap}
+  .stepTitle strong{font-size:17px}
+  .count{font-size:12px;color:var(--muted);background:#f3f4f6;border-radius:999px;padding:4px 8px}
+  .treeWrap{display:grid;grid-template-columns:1fr;gap:10px}
+  .treeCard{background:#fafafa;border:1px solid var(--line);border-radius:12px;padding:12px;overflow:auto}
+  .treeHead{font-size:13px;color:var(--muted);margin-bottom:8px;display:flex;justify-content:space-between;gap:8px;align-items:center;flex-wrap:wrap}
+  .treeText,.treePretty{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;font-size:13px;line-height:1.45;white-space:pre;color:#111827;background:white;border:1px solid var(--line);border-radius:10px;padding:10px;margin-top:10px;overflow:auto}
+  .treePretty{line-height:1.65}
+  .expect{color:var(--danger);font-weight:900}
+  .token{color:var(--ok);font-weight:800}
+  .cat{color:var(--cat);font-weight:800}
+  .branch{color:#94a3b8}
+  .legend{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
+  .legend span{font-size:12px;border:1px solid var(--line);background:#fff;border-radius:999px;padding:5px 9px}
+  table{width:100%;border-collapse:collapse;font-size:12.5px}
+  th,td{border-bottom:1px solid var(--line);padding:8px;text-align:left;vertical-align:top}
+  th{color:#374151;background:#f9fafb}
+  code{background:#f3f4f6;border-radius:6px;padding:1px 5px}
+  .warn{color:var(--warn);font-weight:700}
+  .empty{color:var(--muted);padding:14px;border:1px dashed var(--line);border-radius:12px;background:#fafafa}
+  .sourceBox{border:1px solid #bfdbfe;background:#eff6ff;border-radius:12px;padding:12px;font-size:13px;line-height:1.7;color:#1f2937}
+  .sourceBox b{color:#1d4ed8}
+  .viewLabel{font-size:12px;color:var(--muted);font-weight:700;margin:8px 0 6px}
+  .fileBox{border:1px dashed #bfdbfe;background:#f8fbff;border-radius:12px;padding:12px;margin-top:12px}
+  input[type="file"]{display:block;width:100%;margin:8px 0 6px}
+  .xmlStatus{font-size:13px;line-height:1.6;color:#374151;margin-top:8px}
+  .xmlStatus b{color:#1d4ed8}
+  @media(max-width:900px){.grid{grid-template-columns:1fr} header h1{font-size:24px}}
+</style>
+</head>
+<body>
+<header>
+  <h1>簡易 Jazz Chart Parser v4</h1>
+  <p>コード進行を左から順に読み，文法ルールを適用して構文木候補を生成するデモです。v4ではMusicXML（.musicxml / .xml）からコード記号を読み込み，抽出したコード列をそのまま解析できます。未確定ノードは <b>?IC</b> のように明示します。</p>
+</header>
+<main>
+  <div class="grid">
+    <section>
+      <div class="card">
+        <h2>1. コード進行を入力</h2>
+        <textarea id="input">Dmin7 G7 Cmaj7</textarea>
+        <div>
+          <button onclick="parseInput()">解析する</button>
+          <button class="secondary" onclick="setExample('Dmin7 G7 Cmaj7')">II-V-I</button>
+          <button class="secondary" onclick="setExample('Cmaj7 D7 Dmin7 G7 Cmaj7')">Take The A Train</button>
+          <button class="secondary" onclick="setExample('Dmin7 G7 Emin7 A7 Amin7 D7 Abmin7 Db7 Cmaj7')">Satin Doll</button>
+        </div>
+        <div class="fileBox">
+          <b>MusicXMLから読み込み</b>
+          <input id="musicxmlFile" type="file" accept=".musicxml,.xml,text/xml,application/xml" onchange="loadMusicXMLFile(event)">
+          <button class="secondary" onclick="document.getElementById('musicxmlFile').click()">ファイルを選択</button>
+          <button class="secondary" onclick="clearXmlStatus()">読み込み表示を消す</button>
+          <div id="xmlStatus" class="xmlStatus">コード記号（harmonyタグ）が入っているMusicXMLを選ぶと，コード列を抽出して上の入力欄に入れます。</div>
+        </div>
+        <p class="hint">使える表記例：<code>Dmin7</code>, <code>Dm7</code>, <code>D-7</code>, <code>G7</code>, <code>Cmaj7</code>, <code>CM7</code>, <code>Emin7</code>, <code>A7</code>, <code>Amin7</code>, <code>Abmin7</code>, <code>Db7</code></p>
+      </div>
+
+      <div class="card">
+        <h2>2. 解析結果</h2>
+        <div id="flow" class="flow"></div>
+        <div id="results" style="margin-top:12px"></div>
+      </div>
+    </section>
+
+    <aside>
+      <div class="card">
+        <h2>見方</h2>
+        <div class="legend">
+          <span><b class="expect">?IC</b> = 未確定ノード</span>
+          <span><b class="token">G7</b> = 入力コード</span>
+          <span><b class="cat">VC</b> = カテゴリ</span>
+        </div>
+        <p class="hint">未確定ノードが残っている木は，まだ続きのコードを期待している状態です。未確定ノードがない木は，その時点で一度まとまった構造です。</p>
+      </div>
+
+      <div class="card">
+        <h2>規則の引用元</h2>
+        <div class="sourceBox">
+          <b>基本規則：</b> Ogura et al. (2020), <i>Expectation-based Parsing for Jazz Chord Sequences</i> の Table 1（Take The A Train）を参考。<br>
+          <b>拡張規則：</b> 同論文 Table 2（Satin Doll）を参考に，このデモ用に一部簡略化。<br>
+          <b>注意：</b> 本HTMLは論文の完全再現ではなく，研究初期段階で扱いやすくするための簡易実装です。<br><b>MusicXML：</b> harmonyタグに記録されたコード記号のみ抽出します。音符だけの楽譜からコードを推定する機能は未実装です。
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>文法ルール</h2>
+        <table id="rulesTable"></table>
+        <h3>辞書</h3>
+        <table id="lexTable"></table>
+      </div>
+    </aside>
+  </div>
+</main>
+
+<script>
+const RULES = [
+  {lhs:'S', rhs:['IC'], label:'開始', source:'Table 1'},
+  {lhs:'IC', rhs:['IC','IC'], label:'延長', source:'Table 1'},
+  {lhs:'IC', rhs:['VC','IC'], label:'V→Iへの期待', source:'Table 1'},
+  {lhs:'VC', rhs:['IIC','VC'], label:'II→Vへの期待', source:'Table 1'},
+  {lhs:'VC', rhs:['VG','VC'], label:'副次的VからV', source:'Table 1'},
+  {lhs:'VC', rhs:['VGb'], label:'代理', source:'Table 2を簡略化'},
+  {lhs:'VD', rhs:['IID','VD'], label:'II→V（D key）', source:'Table 2'},
+  {lhs:'VG', rhs:['IIG','VG'], label:'II→V（G key）', source:'Table 2'},
+  {lhs:'VG', rhs:['VD','VG'], label:'V of V', source:'Table 2'},
+  {lhs:'VGb', rhs:['IIGb','VGb'], label:'II→V（Gb key）', source:'Table 2'}
+];
+
+const LEXICON = {
+  'CMAJ7':['IC'], 'CM7':['IC'], 'C':['IC'],
+  'DMIN7':['IIC'], 'DM7':['IIC'], 'D-7':['IIC'],
+  'G7':['VC'],
+  'D7':['VG'],
+  'EMIN7':['IID'], 'EM7':['IID'], 'E-7':['IID'],
+  'A7':['VD'],
+  'AMIN7':['IIG'], 'AM7':['IIG'], 'A-7':['IIG'],
+  'ABMIN7':['IIGb'], 'ABM7':['IIGb'], 'AB-7':['IIGb'], 'A♭MIN7':['IIGb'], 'A♭M7':['IIGb'],
+  'DB7':['VGb'], 'D♭7':['VGb'],
+  'GMIN7':['IIF'], 'GM7':['IIF']
+};
+
+function normChord(s){
+  return s.trim().replace(/♭/g,'B').replace(/Δ/g,'MAJ').toUpperCase();
+}
+function termKey(t){ return JSON.stringify(t); }
+function clone(t){ return JSON.parse(JSON.stringify(t)); }
+function tokenTerm(chord, cat){ return {cat, token:chord}; }
+function undecided(cat){ return {cat, undecided:true}; }
+function parentTerm(cat, children){ return {cat, children}; }
+function isUndecided(t){ return !!t.undecided; }
+function isComplete(t){ return !findLeftmostUndecided(t); }
+
+function findLeftmostUndecided(t){
+  if(isUndecided(t)) return t;
+  if(t.children){
+    for(const ch of t.children){
+      const found = findLeftmostUndecided(ch);
+      if(found) return found;
+    }
+  }
+  return null;
+}
+
+function replaceLeftmostUndecided(t, cat, replacement){
+  if(isUndecided(t)){
+    if(t.cat === cat) return clone(replacement);
+    return null;
+  }
+  const out = clone(t);
+  if(out.children){
+    for(let i=0;i<out.children.length;i++){
+      const replaced = replaceLeftmostUndecided(out.children[i], cat, replacement);
+      if(replaced){
+        out.children[i] = replaced;
+        return out;
+      }
+    }
+  }
+  return null;
+}
+
+function buildLocalChart(chord){
+  const cats = LEXICON[normChord(chord)] || [];
+  const terms = [];
+  const seen = new Set();
+  function add(t){
+    const k = termKey(t);
+    if(!seen.has(k) && terms.length < 80){ seen.add(k); terms.push(t); return true; }
+    return false;
+  }
+  cats.forEach(cat => add(tokenTerm(chord, cat)));
+
+  // ルール適用の簡易closure。左再帰で増えすぎないよう最大3周。
+  for(let depth=0; depth<3; depth++){
+    const snapshot = terms.slice();
+    let changed = false;
+    for(const sigma of snapshot){
+      for(const r of RULES){
+        if(r.rhs[0] === sigma.cat){
+          if(r.lhs === r.rhs[0] && depth > 0) continue;
+          const children = [clone(sigma), ...r.rhs.slice(1).map(undecided)];
+          changed = add(parentTerm(r.lhs, children)) || changed;
+        }
+      }
+    }
+    if(!changed) break;
+  }
+  return terms;
+}
+
+function parse(chords){
+  let global = [undecided('S')];
+  const steps = [];
+  chords.forEach((chord, idx) => {
+    const local = buildLocalChart(chord);
+    const next = [];
+    const seen = new Set();
+    for(const phi of global){
+      const lut = findLeftmostUndecided(phi);
+      if(!lut) continue;
+      for(const psi of local){
+        if(psi.cat === lut.cat){
+          const replaced = replaceLeftmostUndecided(phi, lut.cat, psi);
+          if(replaced){
+            const k = termKey(replaced);
+            if(!seen.has(k) && next.length < 20){ seen.add(k); next.push(replaced); }
+          }
+        }
+      }
+    }
+    global = next;
+    steps.push({idx:idx+1, chord, local, global});
+  });
+  return steps;
+}
+
+function expectations(t){
+  const arr = [];
+  function walk(x){
+    if(isUndecided(x)) arr.push(x.cat);
+    if(x.children) x.children.forEach(walk);
+  }
+  walk(t);
+  return arr;
+}
+
+function termToText(t, indent=''){
+  if(isUndecided(t)) return `${indent}?${t.cat}`;
+  if(t.token) return `${indent}${t.cat}: ${t.token}`;
+  let s = `${indent}${t.cat}`;
+  if(t.children){
+    for(const ch of t.children){ s += `\n${termToText(ch, indent + '  ')}`; }
+  }
+  return s;
+}
+
+function escapeHtml(s){ return String(s).replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])); }
+function colorizeTreeText(s){
+  return escapeHtml(s)
+    .replace(/(├──|└──|│  |   )/g, '<span class="branch">$1</span>')
+    .replace(/\?([A-Za-z0-9♭]+)/g, '<span class="expect">?$1</span>')
+    .replace(/(Cmaj7|CM7|Dmin7|Dm7|D-7|G7|D7|Emin7|Em7|E-7|A7|Amin7|Am7|A-7|Abmin7|Abm7|Ab-7|Db7)/gi, '<span class="token">$1</span>')
+    .replace(/\b(S|IC|VC|IIC|VG|VD|IID|IIG|VGb|IIGb|IIF)\b/g, '<span class="cat">$1</span>');
+}
+
+// v3: ズレ防止のため，構文木はボックスではなく枝記号つきのインデント表示にする。
+function termToPrettyTree(t){
+  function label(x){
+    if(isUndecided(x)) return `?${x.cat}`;
+    if(x.token) return `${x.cat}: ${x.token}`;
+    return x.cat;
+  }
+  const lines = [label(t)];
+  function rec(node, prefix){
+    const children = node.children || [];
+    children.forEach((child, index) => {
+      const isLast = index === children.length - 1;
+      lines.push(prefix + (isLast ? '└── ' : '├── ') + label(child));
+      if(child.children && child.children.length){
+        rec(child, prefix + (isLast ? '    ' : '│   '));
+      }
+    });
+  }
+  rec(t, '');
+  return lines.join('\n');
+}
+
+
+function getDirectText(parent, tagName){
+  const el = parent.getElementsByTagName(tagName)[0];
+  return el ? (el.textContent || '').trim() : '';
+}
+
+function alterToSymbol(alterText){
+  const n = Number(alterText || 0);
+  if(n === -2) return 'bb';
+  if(n === -1) return 'b';
+  if(n === 1) return '#';
+  if(n === 2) return '##';
+  return '';
+}
+
+function kindToSuffix(kindEl){
+  if(!kindEl) return '';
+  const text = (kindEl.getAttribute('text') || '').trim();
+  const value = (kindEl.textContent || '').trim().toLowerCase();
+  const normalizedText = text.replace(/Δ/g,'maj').replace(/−/g,'-').toLowerCase();
+
+  // text属性が明確な場合を優先。ただしパーサの辞書に寄せた表記へ変換する。
+  if(['maj7','ma7','m7+','major7'].includes(normalizedText)) return 'maj7';
+  if(['m7','min7','-7'].includes(normalizedText)) return 'min7';
+  if(['7','dom7'].includes(normalizedText)) return '7';
+  if(['m','min','-'].includes(normalizedText)) return 'min';
+  if(['maj','major',''].includes(normalizedText)) return '';
+
+  // MusicXMLのkind本文から変換。
+  if(value.includes('major-seventh')) return 'maj7';
+  if(value.includes('minor-seventh')) return 'min7';
+  if(value.includes('dominant')) return '7';
+  if(value.includes('minor')) return 'min';
+  if(value.includes('major')) return '';
+  if(value.includes('diminished')) return 'dim';
+  if(value.includes('half-diminished')) return 'm7b5';
+  return text || value;
+}
+
+function bassToSlash(harmony){
+  const bass = harmony.getElementsByTagName('bass')[0];
+  if(!bass) return '';
+  const step = getDirectText(bass, 'bass-step');
+  if(!step) return '';
+  const alter = alterToSymbol(getDirectText(bass, 'bass-alter'));
+  return '/' + step + alter;
+}
+
+function musicXmlHarmonyToChord(harmony){
+  const root = harmony.getElementsByTagName('root')[0];
+  if(!root) return '';
+  const step = getDirectText(root, 'root-step');
+  if(!step) return '';
+  const alter = alterToSymbol(getDirectText(root, 'root-alter'));
+  const kind = harmony.getElementsByTagName('kind')[0];
+  const suffix = kindToSuffix(kind);
+  return step + alter + suffix + bassToSlash(harmony);
+}
+
+function extractChordsFromMusicXML(xmlText){
+  const parser = new DOMParser();
+  const xml = parser.parseFromString(xmlText, 'application/xml');
+  if(xml.getElementsByTagName('parsererror').length){
+    throw new Error('XMLとして読み込めませんでした。MusicXMLまたはXMLファイルを選んでください。');
+  }
+  const harmonies = Array.from(xml.getElementsByTagName('harmony'));
+  const chords = harmonies.map(musicXmlHarmonyToChord).filter(Boolean);
+  // 連続して同じコードが出た場合はそのまま残す。必要なら後で圧縮できる。
+  return chords;
+}
+
+function loadMusicXMLFile(event){
+  const file = event.target.files && event.target.files[0];
+  if(!file) return;
+  const status = document.getElementById('xmlStatus');
+  const reader = new FileReader();
+  reader.onload = () => {
+    try{
+      const chords = extractChordsFromMusicXML(String(reader.result || ''));
+      if(!chords.length){
+        status.innerHTML = '<span class="warn">コード記号が見つかりませんでした。</span><br>このMusicXMLに harmony タグがない可能性があります。音符だけからコードを推定する機能はまだ未実装です。';
+        return;
+      }
+      const chordText = chords.join(' ');
+      document.getElementById('input').value = chordText;
+      status.innerHTML = `<b>${escapeHtml(file.name)}</b> から ${chords.length} 個のコードを抽出しました。<br><code>${escapeHtml(chordText)}</code>`;
+      parseInput();
+    }catch(err){
+      status.innerHTML = `<span class="warn">読み込みエラー：</span>${escapeHtml(err.message || err)}`;
+    }
+  };
+  reader.onerror = () => {
+    status.innerHTML = '<span class="warn">ファイルの読み込みに失敗しました。</span>';
+  };
+  reader.readAsText(file);
+}
+
+function clearXmlStatus(){
+  document.getElementById('xmlStatus').innerHTML = 'コード記号（harmonyタグ）が入っているMusicXMLを選ぶと，コード列を抽出して上の入力欄に入れます。';
+  const f = document.getElementById('musicxmlFile');
+  if(f) f.value = '';
+}
+
+function parseInput(){
+  const raw = document.getElementById('input').value.trim();
+  const chords = raw.split(/[\s,→]+/).filter(Boolean);
+  const results = document.getElementById('results');
+  const flow = document.getElementById('flow');
+  flow.innerHTML = chords.map((c,i)=>`<span class="pill">${escapeHtml(c)}</span>${i<chords.length-1?'<span class="arrow">→</span>':''}`).join('');
+  if(!chords.length){ results.innerHTML='<div class="empty">コードを入力してください。</div>'; return; }
+  const steps = parse(chords);
+  let html = '';
+  steps.forEach(step => {
+    html += `<div class="step"><div class="stepTitle"><strong>Step ${step.idx}: ${escapeHtml(step.chord)} を入力</strong><span class="count">候補木 ${step.global.length} 個 / local ${step.local.length} 個</span></div>`;
+    if(step.global.length === 0){
+      html += `<div class="empty"><span class="warn">解析候補がありません。</span><br>辞書または文法ルールにこの流れを処理する規則がない可能性があります。</div>`;
+    }else{
+      html += `<div class="treeWrap">`;
+      step.global.slice(0,8).forEach((t,i)=>{
+        const exps = expectations(t);
+        html += `<div class="treeCard"><div class="treeHead"><span>候補 ${i+1} ${isComplete(t)?'（sub-complete）':'（active）'}</span><span>${exps.length ? '期待: '+exps.map(e=>'?'+e).join(', ') : '未確定なし'}</span></div>`;
+        html += `<div class="viewLabel">構文木ビュー（枝がずれにくい表示）</div><div class="treePretty">${colorizeTreeText(termToPrettyTree(t))}</div>`;
+        html += `<div class="viewLabel">テキスト表示</div><div class="treeText">${colorizeTreeText(termToText(t))}</div></div>`;
+      });
+      html += `</div>`;
+    }
+    html += `</div>`;
+  });
+  results.innerHTML = html;
+}
+
+function setExample(s){ document.getElementById('input').value = s; parseInput(); }
+
+function renderTables(){
+  document.getElementById('rulesTable').innerHTML = '<tr><th>規則</th><th>意味</th><th>引用元</th></tr>' + RULES.map(r=>`<tr><td><code>${r.lhs} → ${r.rhs.join(' ')}</code></td><td>${r.label}</td><td>${r.source}</td></tr>`).join('');
+  const rows = Object.entries(LEXICON).map(([k,v])=>`<tr><td><code>${k}</code></td><td>${v.join(', ')}</td></tr>`).join('');
+  document.getElementById('lexTable').innerHTML = '<tr><th>コード表記</th><th>カテゴリ</th></tr>' + rows;
+}
+renderTables();
+parseInput();
+</script>
+</body>
+</html>
