@@ -1,0 +1,1135 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Jazz Chart Parser v9 — K研究 / PCFG期待度・意外性AI</title>
+<style>
+  :root{
+    --bg:#f6f7fb; --card:#fff; --ink:#1f2937; --muted:#6b7280; --line:#e5e7eb;
+    --accent:#2563eb; --soft:#eff6ff; --danger:#dc2626; --ok:#059669; --warn:#d97706;
+    --cat:#1d4ed8; --sub:#7c3aed; --rule:#0f766e;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:var(--bg);color:var(--ink)}
+  header{padding:28px 20px 18px;background:linear-gradient(135deg,#111827,#1e3a8a);color:white}
+  header h1{margin:0 0 8px;font-size:28px;letter-spacing:.02em}
+  header p{margin:0;opacity:.9;line-height:1.6}
+  main{max-width:1240px;margin:0 auto;padding:22px 16px 44px}
+  .grid{display:grid;grid-template-columns:1fr 380px;gap:16px;align-items:start}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:16px;box-shadow:0 8px 24px rgba(15,23,42,.06);padding:18px;margin-bottom:16px}
+  h2{font-size:19px;margin:0 0 14px} h3{font-size:16px;margin:18px 0 10px}
+  textarea{width:100%;min-height:72px;border:1px solid var(--line);border-radius:12px;padding:12px;font-size:16px;line-height:1.5;resize:vertical}
+  button{border:0;border-radius:999px;padding:10px 14px;font-weight:700;cursor:pointer;background:var(--accent);color:#fff;margin:6px 6px 0 0}
+  button.secondary{background:#e5e7eb;color:#111827} button.ghost{background:#fff;color:#374151;border:1px solid var(--line)}
+  select{width:100%;border:1px solid var(--line);border-radius:10px;padding:9px;background:#fff;color:#111827;margin-top:8px}
+  .hint{font-size:13px;color:var(--muted);line-height:1.7;margin-top:8px}
+  .pill{display:inline-block;border-radius:999px;padding:4px 9px;font-size:12px;font-weight:700;margin:2px;background:#eef2ff;color:#3730a3}
+  .flow{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px}.arrow{color:var(--muted);font-weight:700}
+  .step{border-left:5px solid var(--accent);padding:14px 14px 12px;background:#fff;border-radius:14px;margin:14px 0;border-top:1px solid var(--line);border-right:1px solid var(--line);border-bottom:1px solid var(--line)}
+  .stepTitle{display:flex;justify-content:space-between;gap:12px;align-items:center;margin-bottom:10px;flex-wrap:wrap}.stepTitle strong{font-size:17px}
+  .count{font-size:12px;color:var(--muted);background:#f3f4f6;border-radius:999px;padding:4px 8px}
+  .treeWrap{display:grid;grid-template-columns:1fr;gap:10px}.treeCard{background:#fafafa;border:1px solid var(--line);border-radius:12px;padding:12px;overflow:auto}
+  .treeHead{font-size:13px;color:var(--muted);margin-bottom:8px;display:flex;justify-content:space-between;gap:8px;align-items:center;flex-wrap:wrap}
+  .treeText,.treePretty{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;font-size:13px;line-height:1.55;white-space:pre;color:#111827;background:white;border:1px solid var(--line);border-radius:10px;padding:10px;margin-top:10px;overflow:auto}
+  .treePretty{line-height:1.68}.expect{color:var(--danger);font-weight:900}.token{color:var(--ok);font-weight:800}.cat{color:var(--cat);font-weight:800}.rule{color:var(--rule);font-weight:700}.branch{color:#94a3b8}
+  .treeVisual{background:white;border:1px solid var(--line);border-radius:10px;padding:12px;margin-top:10px;overflow:auto;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;font-size:13px;line-height:1.55}
+  .vNode{display:inline-block;border:1px solid #cbd5e1;border-radius:8px;padding:3px 8px;background:#fff;margin:2px 0}
+  .vNode.catNode{border-color:#bfdbfe;background:#eff6ff;color:#1d4ed8;font-weight:800}
+  .vNode.tokenNode{border-color:#bbf7d0;background:#f0fdf4;color:#047857;font-weight:800}
+  .vNode.expectNode{border-color:#fecaca;background:#fef2f2;color:#dc2626;font-weight:900}
+  .vRule{color:#0f766e;font-weight:700;font-size:11px;margin-left:4px}
+  .vChildren{margin-left:24px}
+  .vChild{position:relative;margin:4px 0 4px 0;padding-left:18px}
+  .vChild::before{content:"";position:absolute;left:0;top:0.95em;width:14px;border-top:2px solid #64748b}
+  .vChild::after{content:"";position:absolute;left:0;top:-8px;bottom:0.78em;border-left:2px solid #64748b}
+  .vChild.last::after{bottom:calc(100% - 0.95em)}
+  .vChild.unconfirmed::before{border-top-style:dashed;border-top-color:#dc2626}
+  .vChild.unconfirmed::after{border-left-style:dashed;border-left-color:#dc2626}
+  .legend{display:flex;gap:10px;flex-wrap:wrap;font-size:12px;color:var(--muted);margin:4px 0 8px}
+  .legendLine{display:inline-flex;align-items:center;gap:5px}.legendLine::before{content:"";display:inline-block;width:28px;border-top:2px solid #64748b}.legendLine.dashed::before{border-top-style:dashed;border-color:#dc2626}
+  .legend{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}.legend span{font-size:12px;border:1px solid var(--line);background:#fff;border-radius:999px;padding:5px 9px}
+  table{width:100%;border-collapse:collapse;font-size:12.5px} th,td{border-bottom:1px solid var(--line);padding:8px;text-align:left;vertical-align:top} th{color:#374151;background:#f9fafb}
+  code{background:#f3f4f6;border-radius:6px;padding:1px 5px}.warn{color:var(--warn);font-weight:700}.ok{color:var(--ok);font-weight:700}
+  .empty{color:var(--muted);padding:14px;border:1px dashed var(--line);border-radius:12px;background:#fafafa}
+  .sourceBox{border:1px solid #bfdbfe;background:#eff6ff;border-radius:12px;padding:12px;font-size:13px;line-height:1.7;color:#1f2937}.sourceBox b{color:#1d4ed8}
+  .viewLabel{font-size:12px;color:var(--muted);font-weight:700;margin:8px 0 6px}.fileBox{border:1px dashed #bfdbfe;background:#f8fbff;border-radius:12px;padding:12px;margin-top:12px}
+  input[type="file"]{display:block;width:100%;margin:8px 0 6px}.status{font-size:13px;line-height:1.6;color:#374151;margin-top:8px}.status b{color:#1d4ed8}
+  .miniGrid{display:grid;grid-template-columns:1fr 1fr;gap:8px}.toolbar{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}.small{font-size:12px;padding:8px 10px}
+
+
+  .notationSwitchWrap{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .notationLabel{font-size:12px;color:var(--muted);font-weight:700}
+  .notationSwitch{display:inline-flex;border:1px solid var(--line);border-radius:999px;background:#fff;padding:3px;box-shadow:0 1px 2px rgba(15,23,42,.04)}
+  .notationBtn{border:0;background:transparent;color:#64748b;padding:6px 11px;border-radius:999px;font-size:12px;font-weight:900;cursor:pointer}
+  .notationBtn.active{background:#2563eb;color:#fff}
+
+
+  .clockSvg{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;overflow:visible}
+  .harmonyLine{stroke:#64748b;stroke-width:1.8;opacity:.55}
+  .harmonyLine.preview{stroke:#2563eb;stroke-width:2.2;opacity:.72;stroke-dasharray:5 4}
+  .pitchNote{cursor:pointer;user-select:none}
+  .pitchNote.userSelected{color:#7c3aed!important;opacity:1!important;font-weight:950!important}
+  .pitchNote.userSelected::before{content:"";position:absolute;left:50%;top:50%;width:34px;height:34px;border:2px solid #a78bfa;border-radius:50%;transform:translate(-50%,-50%);z-index:-1;background:#f5f3ff}
+  .harmonyPanel{margin-top:14px;border-top:1px solid var(--line);padding-top:12px}
+  .harmonyPanel h4{margin:0 0 8px;font-size:13px;color:#111827}
+  .harmonyGrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px}
+  .harmonyItem{border:1px solid var(--line);border-radius:10px;padding:9px;background:#fafafa}
+  .harmonyItem b{display:block;color:#111827;font-size:12px;margin-bottom:3px}
+  .harmonyItem span{font-size:11px;line-height:1.55;color:#64748b}
+  .selectedHarmony{margin-top:10px;border:1px solid #ddd6fe;background:#faf5ff;border-radius:10px;padding:10px}
+  .selectedHarmonyTitle{font-size:12px;font-weight:900;color:#6d28d9;margin-bottom:4px}
+  .selectedHarmonyBody{font-size:12px;line-height:1.6;color:#4c1d95}
+
+  .qualityRuleBox{margin-top:12px;border:1px solid #fed7aa;background:#fff7ed;border-radius:10px;padding:10px}
+  .qualityRuleTitle{font-size:12px;font-weight:900;color:#9a3412;margin-bottom:5px}
+  .qualityRuleText{font-size:12px;line-height:1.65;color:#7c2d12}
+  .qualityBadge{display:inline-block;padding:4px 8px;border-radius:999px;font-size:11px;font-weight:900;margin-right:5px;background:#eef2ff;color:#3730a3}
+  .qualityImpression{margin-top:7px;font-size:12px;font-weight:800;color:#111827}
+
+  .clockHint{font-size:11px;color:#64748b;margin-top:7px}
+
+  .chordClockCard{background:linear-gradient(180deg,#fff,#fbfdff);border:1px solid var(--line);border-radius:16px;padding:16px;margin-top:14px}
+  .chordClockTop{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap}
+  .chordClockTitle{font-weight:800;color:#111827;font-size:15px}
+  .chordClockSub{font-size:12px;color:var(--muted);margin-top:4px;line-height:1.6}
+  .chordChips{display:flex;gap:6px;flex-wrap:wrap;margin:12px 0 8px}
+  .chordChip{border:1px solid var(--line);background:#fff;color:#374151;padding:7px 10px;border-radius:999px;font-size:12px;font-weight:800;cursor:pointer}
+  .chordChip.active{background:#eff6ff;border-color:#93c5fd;color:#1d4ed8;box-shadow:0 0 0 2px rgba(37,99,235,.08)}
+  .clockArea{display:grid;grid-template-columns:minmax(280px,360px) 1fr;gap:18px;align-items:center;margin-top:10px}
+  .pitchClock{position:relative;width:320px;height:320px;margin:0 auto;border:2px solid #dbe3ef;border-radius:50%;background:radial-gradient(circle at center,#ffffff 0 44%,#f8fafc 45% 100%);box-shadow:inset 0 0 0 12px #fff}
+  .pitchClock::before{content:"";position:absolute;left:50%;top:50%;width:8px;height:8px;border-radius:50%;background:#cbd5e1;transform:translate(-50%,-50%)}
+  .pitchNote{position:absolute;transform:translate(-50%,-50%);min-width:58px;text-align:center;font-size:13px;font-weight:600;color:#94a3b8;opacity:.38;transition:.18s ease;white-space:nowrap}
+  .pitchNote.activeTone{color:#111827;opacity:1;font-size:15px;font-weight:900}
+  .pitchNote.rootTone{color:#1d4ed8;opacity:1;font-size:16px;font-weight:950}
+  .pitchNote.rootTone::after{content:"";display:block;width:7px;height:7px;border-radius:50%;background:#2563eb;margin:3px auto 0}
+  .clockCenter{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);text-align:center;width:135px}
+  .clockChord{font-size:24px;font-weight:900;color:#111827}
+  .clockType{font-size:11px;color:var(--muted);margin-top:4px}
+  .toneInfo{border:1px solid var(--line);border-radius:12px;background:#fff;padding:14px}
+  .toneInfo h3{margin:0 0 9px;font-size:15px}
+  .toneList{display:flex;gap:7px;flex-wrap:wrap;margin:8px 0 12px}
+  .tonePill{padding:6px 9px;border-radius:999px;background:#f3f4f6;color:#111827;font-weight:900;font-size:13px}
+  .tonePill.root{background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe}
+  .toneExplain{font-size:12px;line-height:1.7;color:#4b5563}
+  .toneWarn{border:1px dashed #f59e0b;background:#fffbeb;color:#92400e;border-radius:10px;padding:10px;font-size:12px;line-height:1.6}
+
+  @media(max-width:900px){.grid{grid-template-columns:1fr}.miniGrid{grid-template-columns:1fr}.clockArea{grid-template-columns:1fr}.pitchClock{width:290px;height:290px}header h1{font-size:24px}}
+
+  .kTitle{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.kChip{background:#e0f2fe;color:#075985;border:1px solid #bae6fd;border-radius:999px;font-size:12px;font-weight:800;padding:5px 9px}
+  .kInfo{padding:12px;border-radius:12px;background:#f0f9ff;border:1px solid #bae6fd;font-size:13px;line-height:1.7;margin:10px 0}
+  .kWarn{padding:10px;border-radius:10px;background:#fffbeb;border:1px solid #fbbf24;color:#92400e;font-size:12px;line-height:1.65;margin-top:10px}
+  .kStats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-top:12px}
+  .kStat{background:#f8fafc;border:1px solid #e2e8f0;padding:12px;border-radius:12px}.kStat small{display:block;color:#64748b;font-size:12px}.kStat strong{display:block;font-size:23px;margin-top:4px;color:#0f172a;font-variant-numeric:tabular-nums}
+  .kTabs{display:flex;gap:7px;align-items:center;flex-wrap:wrap;margin-top:12px}.kTabs label{font-size:13px;font-weight:800}.kTabs input[type=range]{max-width:220px;min-width:80px;flex:1;accent-color:#2563eb}
+  .kTrend{display:flex;align-items:end;gap:7px;min-height:138px;border-radius:12px;background:#f8fafc;border:1px solid #e2e8f0;padding:13px 11px 7px;overflow-x:auto;margin-top:10px}
+  .kBar{min-width:55px;flex:1;display:flex;align-items:center;flex-direction:column;justify-content:flex-end;gap:4px;height:116px;font-size:12px}.kBar .kFill{width:80%;max-width:46px;min-height:2px;background:#2563eb;border-radius:6px 6px 2px 2px}.kBar .kFill.high{background:#d97706}.kBar .kNum{font-weight:800;font-variant-numeric:tabular-nums}.kBar .kChord{color:#64748b;font-size:11px;overflow:hidden;text-overflow:ellipsis;max-width:65px;white-space:nowrap}
+  .kSuggestions{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:8px;margin-top:10px}.kSuggestion{border:1px solid #dbeafe;background:#fff;border-radius:12px;padding:11px}.kSuggestion strong{font-size:18px}.kSuggestion p{color:#64748b;font-size:11px;line-height:1.5;margin:6px 0 0}.kSuggestion button{font-size:12px;padding:7px 10px;margin-top:7px}
+  .kScroll{overflow:auto;max-height:340px;border:1px solid #e2e8f0;border-radius:10px}.kScroll table{margin:0}.kScroll input[type=number]{font-size:12px;width:75px;padding:5px 7px;border:1px solid #cbd5e1;border-radius:7px}
+  .kHelp{font-size:12px;line-height:1.7;color:#64748b}.kMono{font-family:ui-monospace,monospace}.kMini{font-size:11px;color:#475569}
+  @media(max-width:680px){.kStats{grid-template-columns:1fr 1fr}.kStats .kStat:first-child{grid-column:1/-1}}
+</style>
+</head>
+<body>
+<header>
+  <h1>Jazz Chart Parser v9 <span style="font-size:15px;opacity:.8">｜K研究：PCFG・意外性評価AI</span></h1>
+  <p>PCFGによる期待度・意外性Uの評価、12調のコード表記対応、構文木エディタ連携をまとめた研究用試作版です。未確定ノードは <b>?IC</b> のように表示し，構文木はJSONとして保存できます。さらに入力コードの構成音を12音クロックで確認できます。</p>
+</header>
+<main>
+  <div class="grid">
+    <section>
+      <div class="card">
+        <h2>1. 入力</h2>
+        <textarea id="input">Cmaj7 D7 Dmin7 G7 Cmaj7</textarea>
+        <div class="toolbar">
+          <button onclick="parseInput()">解析する</button>
+          <button class="secondary" onclick="setExample('Dmin7 G7 Cmaj7')">II-V-I</button>
+          <button class="secondary" onclick="setExample('Cmaj7 D7 Dmin7 G7 Cmaj7')">Take The A Train</button>
+          <button class="secondary" onclick="setExample('Dmin7 G7 Emin7 A7 Amin7 D7 Abmin7 Db7 Cmaj7')">Satin Doll</button>
+        </div>
+        <div class="fileBox" style="margin:9px 0;border-color:#bfdbfe;background:#f8fbff">
+          <label for="kKeySelect"><b>調（主音）を選択：</b></label>
+          <select id="kKeySelect" onchange="kChangeKey()" style="display:inline-block;width:auto;min-width:105px;margin-left:8px">
+            <option>C</option><option>Db</option><option>D</option><option>Eb</option><option>E</option><option>F</option><option>F#</option><option>G</option><option>Ab</option><option>A</option><option>Bb</option><option>B</option>
+          </select>
+          <div id="kCoverage" class="kHelp" style="margin-top:7px">調を指定してから解析してください。</div>
+          <div class="kHelp">12調の根音と代表的なmaj/min/7系拡張を認識。<b>コード記号の認識 ≠ 和声文法での解析成功</b>です。dim/aug/susなど現行CFGで役割のない和音は、その旨を表示します。</div>
+        </div>
+        <p class="hint">使える表記例：<code>Dmin7</code>, <code>Dm7</code>, <code>D-7</code>, <code>G7</code>, <code>Cmaj7</code>, <code>CM7</code>, <code>FM7</code>, <code>Bb7</code>, <code>Abmin7</code>, <code>Db7</code></p>
+
+        <div class="chordClockCard">
+          <div class="chordClockTop">
+            <div>
+              <div class="chordClockTitle">コード構成音クロック（12音）</div>
+              <div class="chordClockSub">表示音名を「ABC」と「ドレミ」で切り替えられます。入力欄のコード記号は従来どおり C / Dm7 / G7 などの英字表記で解析します。</div>
+            </div>
+            <div class="notationSwitchWrap">
+              <span class="notationLabel">音名表示</span>
+              <div class="notationSwitch" role="group" aria-label="音名表示切替">
+                <button type="button" id="notationABC" class="notationBtn" onclick="setNotationMode('abc')">ABC</button>
+                <button type="button" id="notationDoremi" class="notationBtn active" onclick="setNotationMode('doremi')">ドレミ</button>
+              </div>
+              <span class="pill">リアルタイム表示</span>
+            </div>
+          </div>
+          <div id="chordChips" class="chordChips"></div>
+          <div id="chordClockOutput"></div>
+        </div>
+
+
+        <div class="fileBox">
+          <b>MusicXMLから読み込み（v4機能を維持）</b>
+          <input id="musicxmlFile" type="file" accept=".musicxml,.xml,text/xml,application/xml" onchange="loadMusicXMLFile(event)">
+          <div class="toolbar"><button class="secondary small" onclick="document.getElementById('musicxmlFile').click()">MusicXMLを選択</button><button class="ghost small" onclick="clearXmlStatus()">表示を消す</button></div>
+          <div id="xmlStatus" class="status">コード記号（harmonyタグ）が入っているMusicXMLを選ぶと，コード列を抽出して上の入力欄に入れます。</div>
+        </div>
+
+        <div class="fileBox">
+          <b>JHT風JSONから読み込み（新機能）</b>
+          <input id="jhtFile" type="file" accept=".json,application/json" onchange="loadJhtJsonFile(event)">
+          <select id="jhtSelect" onchange="selectJhtTune()"><option value="">JHT JSONを読み込むと曲一覧が出ます</option></select>
+          <div class="toolbar"><button class="secondary small" onclick="document.getElementById('jhtFile').click()">JSONを選択</button><button class="ghost small" onclick="clearJhtStatus()">JHT表示を消す</button></div>
+          <div id="jhtStatus" class="status">JHTのようにコード列や構文木を持つJSONを読み込むと，コード列・正解木候補を表示します。</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>2. 解析結果</h2>
+        <div id="flow" class="flow"></div>
+        <div class="toolbar">
+          <button class="secondary small" onclick="downloadFinalTree()">最終候補木JSONを保存</button>
+          <button class="ok small" onclick="kOpenEditorBest()">最良候補をEditorに送る ↗</button>
+          <button class="secondary small" onclick="downloadAllSteps()">全ステップJSONを保存</button>
+          <button class="ghost small" onclick="downloadInputChords()">コード列を保存</button>
+        </div>
+        <div id="results" style="margin-top:12px"></div>
+      </div>
+
+
+      <div class="card" id="kLinkedEditorCard" style="display:none">
+        <div class="kTitle"><h2 style="margin:0">連携Editor v3</h2><span class="kChip">Parser ⇄ Editor</span></div>
+        <p class="kHelp">Parserで候補を選び、Editor内で構文木を編集 → 「編集結果をParserに返す」 → コード列を再解析できます。単体HTMLなので別ファイルの読み込みは不要です。</p>
+        <div class="toolbar"><button class="ghost small" onclick="kCloseEditor()">Editorを閉じる</button><button class="secondary small" onclick="kOpenEditorBest()">最良候補を再送</button></div>
+        <div id="kEditorStatus" class="kHelp">準備中</div>
+        <iframe id="kEditorFrame" title="構文木エディタ v3" style="width:100%;height:1040px;border:1px solid #cbd5e1;border-radius:10px;background:white" loading="eager"></iframe>
+        <div id="kRoundtrip" class="kInfo">編集した構文木をParserに返すと、ここに再解析結果が表示されます。</div>
+        <div class="toolbar"><button class="secondary small" onclick="kSaveRoundtrip()">構造比較JSONを保存</button></div>
+      </div>
+
+      <div class="card" id="kAiPanel">
+        <div class="kTitle"><h2 style="margin:0">3. K研究：期待度・意外性を評価するAI</h2><span class="kChip">PCFG / 確率推論</span></div>
+        <div class="kInfo"><b>論文の式(2)(3)：</b> 各生成規則 A → α に確率 P(A → α | A) を与え、同じ左辺 A の確率の和を1にします。<br><b>式(4)：</b> コーパスの規則使用回数から確率を推定します。<br><b>意外性の式(8)：</b> 2021年の関連論文にある <code>U(n)=P(best tree at n)/P(best tree at n−1)</code> を使います（n&gt;1）。Uが小さいほど期待からの逸脱が大きい指標です。</div>
+        <div id="kModelBadge" class="kWarn">初期値は試験用の仮カウントです。実際の楽曲から学習した値ではありません。</div>
+        <div class="kStats"><div class="kStat"><small>最終ステップの最大木生成確率</small><strong id="kBestProb">—</strong></div><div class="kStat"><small>最後の意外性指標 U</small><strong id="kU">—</strong></div><div class="kStat"><small>期待からの逸脱 1−U（補助表示）</small><strong id="kSurprise">—</strong></div></div>
+        <h3>コードごとの意外性の推移</h3>
+        <div id="kTrend" class="kTrend" aria-label="コードごとの意外性の推移"></div>
+        <div id="kMeasureNotes" class="kHelp" style="margin-top:8px"></div>
+        <div class="kTabs"><label for="kTarget">次のコードをAIに提案：目標の意外性</label><input id="kTarget" type="range" min="0" max="100" value="35" oninput="kSuggest()"><b id="kTargetLabel">35%</b></div>
+        <div class="kHelp">左：期待どおりの進行を優先 / 右：予想外の進行を優先。<b>予測器はPCFGで推論するシンボリックAI</b>です。LLM・Web検索・自動学習は使用していません。</div>
+        <div id="kSuggestions" class="kSuggestions"></div>
+        <div class="toolbar"><button class="secondary small" onclick="kSuggest()">候補を再計算</button><button class="ghost small" onclick="kExportReport()">評価結果JSONを保存</button></div>
+      </div>
+
+      <div id="jhtTreeCard" class="card" style="display:none">
+        <h2>JHT / 外部JSONの構文木</h2>
+        <div class="hint">読み込んだJSON内に <code>label</code> と <code>children</code> を持つ木がある場合，ここに表示します。自作Parserの候補木との比較用です。</div>
+        <div id="jhtTreeOutput"></div>
+      </div>
+    </section>
+
+    <aside>
+      <div class="card">
+        <h2>見方</h2>
+        <div class="legend">
+          <span><b class="expect">?IC</b> = 未確定ノード</span>
+          <span><b class="token">G7</b> = 入力コード</span>
+          <span><b class="cat">VC</b> = カテゴリ</span>
+          <span><b class="rule">[準備]</b> = 適用規則</span>
+        </div>
+        <p class="hint">未確定ノードが残っている木は，まだ続きのコードを期待している状態です。未確定ノードがない木は，その時点で一度まとまった構造です。</p>
+      </div>
+
+      <div class="card">
+        <h2>規則の引用元</h2>
+        <div class="sourceBox">
+          <b>基本規則：</b> Ogura et al. (2020) <i>Expectation-based Parsing for Jazz Chord Sequences</i> の Table 1 / Table 2 を参考。<br>
+          <b>理論的背景：</b> JHT論文で説明される <i>prolongation</i>（延長）と <i>preparation</i>（準備）の考え方を参考。<br>
+          <b>JHT JSON：</b> Jazz Harmony Treebankは，専門家によるジャズスタンダードの構文木解析をJSON形式で公開しているデータセット。<br>
+          <b>注意：</b> 本HTMLは論文・JHTの完全再現ではなく，研究初期段階で扱いやすくするための簡易実装です。
+        </div>
+      </div>
+
+
+      <div class="card" id="kModelPanel">
+        <h2>PCFGの学習データ（K研究）</h2>
+        <p class="hint">各規則の「出現回数」を変更すると、式(4)から確率を再推定します。<b>式(3)の同一左辺の合計=1</b>を自動保証します。</p>
+        <div class="kScroll"><table id="kRuleCountTable"></table></div>
+        <div class="toolbar"><button class="secondary small" onclick="kUseUniform()">均等カウント</button><button class="secondary small" onclick="kUseDemo()">仮カウントに戻す</button></div>
+        <div class="fileBox"><b>学習用の木構造コーパスJSONを読む</b><input type="file" id="kCorpus" accept=".json,application/json" onchange="kImportCorpus(event)"><div class="kHelp">受入形式：<code>{"trees":[{cat,children},...]}</code> または木の配列。内側ノードの生成規則を数えます。単なるコード列から正解構文木を自動推定した回数は、ここでは学習データとしません。</div></div>
+        <div class="toolbar"><button class="ghost small" onclick="kExportCounts()">規則確率JSONを保存</button></div>
+        <div id="kModelStatus" class="kHelp" style="margin-top:10px"></div>
+      </div>
+
+      <div class="card">
+        <h2>文法ルール</h2>
+        <table id="rulesTable"></table>
+        <h3>辞書</h3>
+        <table id="lexTable"></table>
+      </div>
+    </aside>
+  </div>
+</main>
+
+<script>
+const RULES = [
+  {lhs:'S', rhs:['IC'], label:'開始', source:'Ogura Table 1'},
+  {lhs:'IC', rhs:['IC','IC'], label:'延長', source:'Ogura Table 1 / JHT strong prolongation'},
+  {lhs:'IC', rhs:['VC','IC'], label:'V→Iへの期待', source:'Ogura Table 1 / preparation'},
+  {lhs:'VC', rhs:['IIC','VC'], label:'II→Vへの期待', source:'Ogura Table 1 / preparation'},
+  {lhs:'VC', rhs:['VG','VC'], label:'副次的VからV', source:'Ogura Table 1'},
+  {lhs:'VC', rhs:['VGb'], label:'代理', source:'Ogura Table 2を簡略化'},
+  {lhs:'VD', rhs:['IID','VD'], label:'II→V（D key）', source:'Ogura Table 2'},
+  {lhs:'VG', rhs:['IIG','VG'], label:'II→V（G key）', source:'Ogura Table 2'},
+  {lhs:'VG', rhs:['VD','VG'], label:'V of V', source:'Ogura Table 2'},
+  {lhs:'VGb', rhs:['IIGb','VGb'], label:'II→V（Gb key）', source:'Ogura Table 2'},
+  {lhs:'IF', rhs:['IIF','VF'], label:'II→V（F key）', source:'JHT頻出パターンを参考に追加'},
+  {lhs:'IF', rhs:['VF','IF'], label:'V→I（F key）', source:'JHT頻出パターンを参考に追加'}
+];
+
+const LEXICON = {
+  'CMAJ7':['IC'], 'CM7':['IC'], 'C':['IC'], 'C6':['IC'],
+  'DMIN7':['IIC'], 'DM7':['IIC'], 'D-7':['IIC'],
+  'G7':['VC'], 'GSUS7':['VC'],
+  'D7':['VG'],
+  'EMIN7':['IID'], 'EM7':['IID'], 'E-7':['IID'],
+  'A7':['VD'],
+  'AMIN7':['IIG'], 'AM7':['IIG'], 'A-7':['IIG'],
+  'ABMIN7':['IIGb'], 'ABM7':['IIGb'], 'AB-7':['IIGb'], 'A♭MIN7':['IIGb'], 'A♭M7':['IIGb'],
+  'DB7':['VGb'], 'D♭7':['VGb'],
+  'FMAJ7':['IF'], 'FM7':['IF'], 'F':['IF'],
+  'GMIN7':['IIF'], 'GM7':['IIF'], 'G-7':['IIF'],
+  'C7':['VF'],
+  'BB7':['IVC'], 'B♭7':['IVC'],
+  'BMIN7B5':['VIIC'], 'B%7':['VIIC'], 'BØ7':['VIIC'],
+  'E7':['VIIID']
+};
+
+let CURRENT_STEPS = [];
+let CURRENT_CHORDS = [];
+let LOADED_JHT_TUNES = [];
+let CURRENT_EXTERNAL_TREE = null;
+
+function normChord(s){
+  return String(s).trim()
+    .replace(/♭/g,'B').replace(/♯/g,'#').replace(/Δ/g,'MAJ').replace(/−/g,'-')
+    .replace(/ø/g,'Ø').toUpperCase();
+}
+function normForLexicon(s){ return normChord(String(s).split('/')[0]); }
+/* 共通: 12調のコード根音と簡易和声機能認識。全和音・全機能を保証するものではない。 */
+const K_NOTE_PC={C:0,'B#':0,DB:1,'C#':1,D:2,EB:3,'D#':3,E:4,FB:4,F:5,'E#':5,GB:6,'F#':6,G:7,AB:8,'G#':8,A:9,BB:10,'A#':10,B:11,CB:11};
+const K_NAMES_FLAT=['C','Db','D','Eb','E','F','Gb','G','Ab','A','Bb','B'];
+const K_NAMES_SHARP=['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+function kCanonicalizeChord(raw){return String(raw||'').trim().replace(/♭/g,'b').replace(/♯/g,'#').replace(/−/g,'-').replace(/Δ/g,'maj').replace(/ø/g,'ø').replace(/º/g,'°').replace(/／/g,'/');}
+function kParseChordSymbol(raw){
+  const s=kCanonicalizeChord(raw);
+  if(/^(N\.?C\.?|NO\s*CHORD)$/i.test(s))return {recognized:true,root:null,family:'none',suffix:'',bass:'',reason:'休符・無和音'};
+  const a=s.match(/^([A-Ga-g])((?:bb|##|b|#)?)([^/]*)?(?:\/(.+))?$/);
+  if(!a)return {recognized:false,reason:'コード表記を読み取れません'};
+  const root=(a[1].toUpperCase()+(a[2]||'')).toUpperCase(), pc=K_NOTE_PC[root];
+  if(pc===undefined)return {recognized:false,reason:'根音を読み取れません'};
+  const q=(a[3]||'').trim(),lower=q.toLowerCase(),bass=a[4]||'';
+  let family='unsupported';
+  if(/^(m7b5|min7b5|-7b5|ø|%)/i.test(q))family='halfdim';
+  else if(/^(dim|°|o7)/i.test(q))family='dim';
+  else if(/^(aug|\+5?|7#5)/i.test(q))family='aug';
+  else if(/^(min|m(?!aj)|-)/.test(q))family='min';
+  else if(/^(maj|M(?:7|9|11|13)|\^)/.test(q))family='maj';
+  else if(/^(7|9|11|13)/.test(q))family='dom';
+  else if(/^sus/i.test(q))family='sus';
+  else if(q===''||/^(6|69|6\/9|add|2|4)/i.test(q))family='maj';
+  // 記号に含まれる大小文字が品質に影響する（m7とM7は別）。
+  if(/^7sus/i.test(q))family='dom';
+  return {recognized:true,root:a[1].toUpperCase()+(a[2]||''),rootPc:pc,family,suffix:q,bass};
+}
+function kRoleCategories(raw,key='C'){
+  const c=kParseChordSymbol(raw);if(!c.recognized||c.family==='none')return [];
+  const keyPc=K_NOTE_PC[String(key).toUpperCase()];if(keyPc===undefined)return [];
+  const degree=(c.rootPc-keyPc+12)%12;
+  const roles={
+    maj:{0:['IC'],5:['IF']},
+    min:{2:['IIC'],4:['IID'],9:['IIG'],8:['IIGb'],7:['IIF']},
+    dom:{7:['VC'],2:['VG'],9:['VD'],1:['VGb'],0:['VF'],10:['IVC'],4:['VIIID']},
+    halfdim:{11:['VIIC']}
+  };
+  return (roles[c.family]&&roles[c.family][degree])||[];
+}
+function kTransposeChord(raw,key='C'){
+  const c=kParseChordSymbol(raw);if(!c.recognized||c.rootPc===undefined)return raw;
+  const offset=K_NOTE_PC[String(key).toUpperCase()]||0;
+  const names=(String(key).includes('#')||['D','E','G','A','B'].includes(String(key)))?K_NAMES_SHARP:K_NAMES_FLAT;
+  const bassMatch=c.bass.match(/^([A-Ga-g])((?:bb|##|b|#)?)(.*)$/);
+  let bass='';if(bassMatch){const pc=K_NOTE_PC[(bassMatch[1].toUpperCase()+(bassMatch[2]||'')).toUpperCase()];bass='/'+(pc===undefined?c.bass:names[(pc+offset)%12]+bassMatch[3]);}
+  return names[(c.rootPc+offset)%12]+c.suffix+bass;
+}
+function kStatusChord(raw,key='C'){
+  const c=kParseChordSymbol(raw),cats=kRoleCategories(raw,key);
+  return {symbol:raw,recognized:c.recognized,family:c.family||'unknown',cats,reason:!c.recognized?c.reason:cats.length?'文法カテゴリに対応':'表記は認識可能だが現行CFGに役割がない'};
+}
+
+let K_SELECTED_KEY='C';
+function kLookupLexicon(s){return kRoleCategories(s,K_SELECTED_KEY);}
+function kChangeKey(){K_SELECTED_KEY=document.getElementById('kKeySelect').value;renderTables();parseInput();}
+
+function termKey(t){ return JSON.stringify(t); }
+function clone(t){ return JSON.parse(JSON.stringify(t)); }
+function tokenTerm(chord, cat){ return {cat, token:chord}; }
+function undecided(cat){ return {cat, undecided:true}; }
+function parentTerm(cat, children, rule){ return {cat, children, rule: rule ? {text:`${rule.lhs} → ${rule.rhs.join(' ')}`, label:rule.label, source:rule.source} : null}; }
+function isUndecided(t){ return !!t.undecided; }
+function isComplete(t){ return !findLeftmostUndecided(t); }
+
+function findLeftmostUndecided(t){
+  if(isUndecided(t)) return t;
+  if(t.children){ for(const ch of t.children){ const found = findLeftmostUndecided(ch); if(found) return found; } }
+  return null;
+}
+function replaceLeftmostUndecided(t, cat, replacement){
+  if(isUndecided(t)) return t.cat === cat ? clone(replacement) : null;
+  const out = clone(t);
+  if(out.children){
+    for(let i=0;i<out.children.length;i++){
+      const replaced = replaceLeftmostUndecided(out.children[i], cat, replacement);
+      if(replaced){ out.children[i] = replaced; return out; }
+    }
+  }
+  return null;
+}
+function buildLocalChart(chord){
+  const cats = kLookupLexicon(chord);
+  const terms = []; const seen = new Set();
+  function add(t){ const k = termKey(t); if(!seen.has(k) && terms.length < 120){ seen.add(k); terms.push(t); return true; } return false; }
+  cats.forEach(cat => add(tokenTerm(chord, cat)));
+  for(let depth=0; depth<4; depth++){
+    const snapshot = terms.slice(); let changed = false;
+    for(const sigma of snapshot){
+      for(const r of RULES){
+        if(r.rhs[0] === sigma.cat){
+          if(r.lhs === r.rhs[0] && depth > 0) continue;
+          const children = [clone(sigma), ...r.rhs.slice(1).map(undecided)];
+          changed = add(parentTerm(r.lhs, children, r)) || changed;
+        }
+      }
+    }
+    if(!changed) break;
+  }
+  return terms;
+}
+function advanceOne(global, chord){
+  const local=buildLocalChart(chord); const next=[];const seen=new Set();
+  // 文法上作れる候補を集めてから確率で順位をつける。途中で先着30件には絞らない。
+  outer: for(const phi of global){
+    const lut=findLeftmostUndecided(phi); if(!lut)continue;
+    for(const psi of local){
+      if(psi.cat!==lut.cat)continue;
+      const replaced=replaceLeftmostUndecided(phi,lut.cat,psi);
+      if(replaced){const k=termKey(replaced);if(!seen.has(k)){seen.add(k);next.push(replaced);}}
+      if(seen.size>=15000)break outer; // 試作版の過大候補数保護
+    }
+  }
+  next.sort((a,b)=>kTreeProb(b)-kTreeProb(a));
+  return {global:next.slice(0,30),local,wasCapped:seen.size>=15000};
+}
+function parse(chords){
+  let global=[undecided('S')];const steps=[];
+  chords.forEach((chord,idx)=>{
+    const advanced=advanceOne(global,chord);
+    global=advanced.global;
+    steps.push({idx:idx+1,chord,local:advanced.local,global,wasCapped:advanced.wasCapped});
+  });
+  return steps;
+}
+function expectations(t){ const arr=[]; (function walk(x){ if(isUndecided(x)) arr.push(x.cat); if(x.children) x.children.forEach(walk); })(t); return arr; }
+function termToText(t, indent=''){
+  if(isUndecided(t)) return `${indent}?${t.cat}`;
+  if(t.token) return `${indent}${t.cat}: ${t.token}`;
+  let s = `${indent}${t.cat}${t.rule ? ' ['+t.rule.label+']' : ''}`;
+  if(t.children){ for(const ch of t.children){ s += `\n${termToText(ch, indent + '  ')}`; } }
+  return s;
+}
+function termToPrettyTree(t){
+  function label(x){ if(isUndecided(x)) return `?${x.cat}`; if(x.token) return `${x.cat}: ${x.token}`; return `${x.cat}${x.rule ? ' ['+x.rule.label+']' : ''}`; }
+  const lines = [label(t)];
+  function rec(node, prefix){ const children = node.children || []; children.forEach((child, index) => { const isLast = index === children.length - 1; lines.push(prefix + (isLast ? '└── ' : '├── ') + label(child)); if(child.children && child.children.length) rec(child, prefix + (isLast ? '    ' : '│   ')); }); }
+  rec(t, ''); return lines.join('\n');
+}
+function termHasUndecided(t){
+  if(isUndecided(t)) return true;
+  return !!(t.children && t.children.some(termHasUndecided));
+}
+function termToVisualTree(t){
+  function nodeLabel(x){
+    if(isUndecided(x)) return `<span class="vNode expectNode">?${escapeHtml(x.cat)}</span>`;
+    if(x.token) return `<span class="vNode tokenNode">${escapeHtml(x.cat)}: ${escapeHtml(x.token)}</span>`;
+    return `<span class="vNode catNode">${escapeHtml(x.cat)}</span>${x.rule ? `<span class="vRule">[${escapeHtml(x.rule.label)}]</span>` : ''}`;
+  }
+  function rec(x){
+    const children = x.children || [];
+    let html = `<div class="vItem">${nodeLabel(x)}</div>`;
+    if(children.length){
+      html += `<div class="vChildren">`;
+      children.forEach((ch,i)=>{
+        const cls = ['vChild'];
+        if(i === children.length - 1) cls.push('last');
+        // 未確定ノードそのもの、または未確定ノードを内部に含む枝は点線で表示
+        if(termHasUndecided(ch)) cls.push('unconfirmed');
+        html += `<div class="${cls.join(' ')}">${rec(ch)}</div>`;
+      });
+      html += `</div>`;
+    }
+    return html;
+  }
+  return `<div class="legend"><span class="legendLine">確定枝</span><span class="legendLine dashed">未確定枝・期待を含む枝</span></div>` + rec(t);
+}
+
+function externalTreeToPretty(t){
+  function label(x){ return String(x.label || x.cat || x.token || x.name || '?'); }
+  const lines = [label(t)];
+  function rec(node, prefix){ const children = node.children || []; children.forEach((child, index) => { const isLast = index === children.length - 1; lines.push(prefix + (isLast ? '└── ' : '├── ') + label(child)); if(child.children && child.children.length) rec(child, prefix + (isLast ? '    ' : '│   ')); }); }
+  rec(t, ''); return lines.join('\n');
+}
+function escapeHtml(s){ return String(s).replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])); }
+function colorizeTreeText(s){
+  return escapeHtml(s)
+    .replace(/(├──|└──|│   |    )/g, '<span class="branch">$1</span>')
+    .replace(/\?([A-Za-z0-9♭]+)/g, '<span class="expect">?$1</span>')
+    .replace(/\[(.*?)\]/g, '<span class="rule">[$1]</span>')
+    .replace(/(Cmaj7|CM7|Dmin7|Dm7|D-7|G7|D7|Emin7|Em7|E-7|A7|Amin7|Am7|A-7|Abmin7|Abm7|Ab-7|Db7|FM7|Fmaj7|Bb7|C7)/gi, '<span class="token">$1</span>')
+    .replace(/\b(S|IC|VC|IIC|VG|VD|IID|IIG|VGb|IIGb|IF|IIF|VF|IVC|VIIC|VIIID)\b/g, '<span class="cat">$1</span>');
+}
+
+
+// 12音クロック（コード構成音ビュー）
+const PITCH_LABELS_ABC = ['C','C♯ / D♭','D','D♯ / E♭','E','F','F♯ / G♭','G','G♯ / A♭','A','A♯ / B♭','B'];
+const PITCH_LABELS_DOREMI = ['ド','ド♯ / レ♭','レ','レ♯ / ミ♭','ミ','ファ','ファ♯ / ソ♭','ソ','ソ♯ / ラ♭','ラ','ラ♯ / シ♭','シ'];
+let NOTATION_MODE = (()=>{try{return localStorage.getItem('jazzParserNotation')||'doremi'}catch(e){return 'doremi'}})();
+const ROOT_PC = {
+  'C':0,'B#':0,
+  'C#':1,'DB':1,
+  'D':2,
+  'D#':3,'EB':3,
+  'E':4,'FB':4,
+  'F':5,'E#':5,
+  'F#':6,'GB':6,
+  'G':7,
+  'G#':8,'AB':8,
+  'A':9,
+  'A#':10,'BB':10,
+  'B':11,'CB':11
+};
+let SELECTED_CHORD_INDEX = 0;
+let USER_SELECTED_PCS = [];
+
+function splitChordSymbol(raw){
+  const s = String(raw || '').trim().replace(/♭/g,'b').replace(/♯/g,'#').replace(/−/g,'-').replace(/Δ/g,'maj');
+  const main = s.split('/')[0];
+  const m = main.match(/^([A-Ga-g])([#b]?)(.*)$/);
+  if(!m) return null;
+  return {root:(m[1].toUpperCase()+m[2]), quality:m[3] || '', raw:s};
+}
+function chordIntervals(raw){
+  const parsed = splitChordSymbol(raw);
+  if(!parsed) return null;
+  const rootKey = parsed.root.toUpperCase();
+  const rootPc = ROOT_PC[rootKey];
+  if(rootPc === undefined) return null;
+
+  const qRaw = parsed.quality;
+  const q = qRaw.toLowerCase().replace(/\s+/g,'');
+  let intervals, type;
+
+  if(/(m7b5|ø7|ø|%7|%)/i.test(qRaw)){ intervals=[0,3,6,10]; type='minor 7♭5 / half-diminished'; }
+  else if(/dim7|o7|°7/i.test(qRaw)){ intervals=[0,3,6,9]; type='diminished 7'; }
+  else if(/dim|o|°/i.test(qRaw)){ intervals=[0,3,6]; type='diminished'; }
+  else if(/aug|\+/.test(q)){ intervals=[0,4,8]; type='augmented'; }
+  else if(/sus2/.test(q)){ intervals=[0,2,7]; type='sus2'; }
+  else if(/sus4|sus/.test(q)){ intervals=[0,5,7]; type='sus4'; }
+  else if(/minmaj7|mmaj7|-maj7/.test(q)){ intervals=[0,3,7,11]; type='minor major 7'; }
+  else if(/maj13|ma13|m13\+/.test(q)){ intervals=[0,4,7,11,2,5,9]; type='major 13'; }
+  else if(/min13|m13|-13/.test(q)){ intervals=[0,3,7,10,2,5,9]; type='minor 13'; }
+  else if(/13/.test(q)){ intervals=[0,4,7,10,2,5,9]; type='dominant 13'; }
+  else if(/maj11|ma11/.test(q)){ intervals=[0,4,7,11,2,5]; type='major 11'; }
+  else if(/min11|m11|-11/.test(q)){ intervals=[0,3,7,10,2,5]; type='minor 11'; }
+  else if(/11/.test(q)){ intervals=[0,4,7,10,2,5]; type='dominant 11'; }
+  else if(/maj9|ma9/.test(q)){ intervals=[0,4,7,11,2]; type='major 9'; }
+  else if(/min9|m9|-9/.test(q)){ intervals=[0,3,7,10,2]; type='minor 9'; }
+  else if(/add9/.test(q) && /^(m|min|-)/.test(q)){ intervals=[0,3,7,2]; type='minor add9'; }
+  else if(/add9/.test(q)){ intervals=[0,4,7,2]; type='add9'; }
+  else if(/9/.test(q)){ intervals=[0,4,7,10,2]; type='dominant 9'; }
+  else if(/maj7|ma7|M7/.test(qRaw)){ intervals=[0,4,7,11]; type='major 7'; }
+  else if(/^(min7|m7|-7)/i.test(qRaw)){ intervals=[0,3,7,10]; type='minor 7'; }
+  else if(/7/.test(q)){ intervals=[0,4,7,10]; type='dominant 7'; }
+  else if(/^(min6|m6|-6)/i.test(qRaw)){ intervals=[0,3,7,9]; type='minor 6'; }
+  else if(/6/.test(q)){ intervals=[0,4,7,9]; type='major 6'; }
+  else if(/^(min|m|-)/i.test(qRaw)){ intervals=[0,3,7]; type='minor'; }
+  else { intervals=[0,4,7]; type='major'; }
+
+  const pcs = [...new Set(intervals.map(i => (rootPc+i)%12))];
+  return {rootPc, pcs, type, parsed};
+}
+function preferredNoteName(pc, raw){
+  const flat = /b|♭/.test(String(raw));
+  const abcSharps=['C','C♯','D','D♯','E','F','F♯','G','G♯','A','A♯','B'];
+  const abcFlats =['C','D♭','D','E♭','E','F','G♭','G','A♭','A','B♭','B'];
+  const drSharps =['ド','ド♯','レ','レ♯','ミ','ファ','ファ♯','ソ','ソ♯','ラ','ラ♯','シ'];
+  const drFlats  =['ド','レ♭','レ','ミ♭','ミ','ファ','ソ♭','ソ','ラ♭','ラ','シ♭','シ'];
+  if(NOTATION_MODE==='abc') return (flat ? abcFlats : abcSharps)[pc];
+  return (flat ? drFlats : drSharps)[pc];
+}
+function pitchLabels(){
+  return NOTATION_MODE==='abc' ? PITCH_LABELS_ABC : PITCH_LABELS_DOREMI;
+}
+function displayChordSymbol(raw){
+  return String(raw);
+}
+function setNotationMode(mode){
+  NOTATION_MODE = mode==='abc' ? 'abc' : 'doremi';
+  try{localStorage.setItem('jazzParserNotation', NOTATION_MODE)}catch(e){}
+  const a=document.getElementById('notationABC');
+  const d=document.getElementById('notationDoremi');
+  if(a) a.classList.toggle('active', NOTATION_MODE==='abc');
+  if(d) d.classList.toggle('active', NOTATION_MODE==='doremi');
+  updateChordClockFromInput();
+}
+
+function intervalName(semitones){
+  const m = ((semitones%12)+12)%12;
+  const names = {
+    0:'ルート / 完全1度',1:'短2度・♭9',2:'長2度・9th',3:'短3度',4:'長3度',
+    5:'完全4度・11th',6:'増4度 / 減5度・♯11',7:'完全5度',8:'短6度・♭13',
+    9:'長6度・13th',10:'短7度',11:'長7度'
+  };
+  return names[m] || `${m}半音`;
+}
+function toneRole(semitones, chordType=''){
+  const m=((semitones%12)+12)%12;
+  const map={
+    0:['ルート','コードの土台。最も安定して聴こえやすい。'],
+    1:['♭9','強い緊張感。ルートと半音でぶつかるため、かなり不協和に感じやすい。'],
+    2:['9th','広がり・浮遊感。ジャズでは比較的使いやすいテンション。'],
+    3:['短3度','マイナー感を決める重要な音。暗さ・哀愁を作る。'],
+    4:['長3度','メジャー感を決める重要な音。明るさ・安定感を作る。'],
+    5:['11th','開放感。メジャーコードでは3rdとぶつかりやすく、sus的な響きになる。'],
+    6:['♯11 / ♭5','強い色彩感。浮遊感や不安定さ、トライトーン的な緊張を作る。'],
+    7:['5th','コードを支える安定音。響きを厚くする。'],
+    8:['♭13','暗く濁ったテンション感。ドミナント上では強い色彩を出す。'],
+    9:['6th / 13th','柔らかく広がる響き。メジャーでは温かい色合い。'],
+    10:['短7度','ドミナント感・ブルージーさを作る。V7の性格を決める重要音。'],
+    11:['長7度','都会的・ジャジーで繊細な緊張感。maj7らしさを決める。']
+  };
+  return map[m] || ['構成音','コードの色合いを変える音。'];
+}
+
+function basicQualityFromIntervals(rootPc, pcs){
+  const rel=[...new Set((pcs||[]).map(pc=>(pc-rootPc+12)%12))].sort((a,b)=>a-b);
+  const has = n => rel.includes(n);
+  if(has(0) && has(4) && has(7)) return {quality:'major', impression:'明るい・安定感がある'};
+  if(has(0) && has(3) && has(7)) return {quality:'minor', impression:'暗い・落ち着いた'};
+  if(has(0) && has(4) && has(8)) return {quality:'aug', impression:'奇妙・浮遊感・不安定'};
+  if(has(0) && has(3) && has(6)) return {quality:'dim', impression:'寂しい・不安・緊張感がある'};
+  if(has(0) && has(2) && has(7)) return {quality:'sus2', impression:'爽やか・透明感がある'};
+  if(has(0) && has(5) && has(7)) return {quality:'sus4', impression:'爽やか・開放感・少し解決待ち'};
+  return {quality:'other', impression:'構成音の組み合わせによって響きが変わる'};
+}
+function qualityReferenceHtml(){
+  const items=[
+    ['major','4 → 3','明るい'],
+    ['minor','3 → 4','暗い'],
+    ['aug','4 → 4','奇妙'],
+    ['dim','3 → 3','寂しい'],
+    ['sus2','2 → 5','爽やか'],
+    ['sus4','5 → 2','爽やか']
+  ];
+  return items.map(([q,p,i])=>`<div class="harmonyItem"><b>${q}　${p}</b><span>${i}</span></div>`).join('');
+}
+function semitoneStepsFromChord(rootPc, pcs){
+  const rel=[...new Set((pcs||[]).map(pc=>(pc-rootPc+12)%12))].sort((a,b)=>a-b);
+  const steps=[];
+  for(let i=0;i<rel.length-1;i++) steps.push(rel[i+1]-rel[i]);
+  return {rel,steps};
+}
+
+function describeSelectedSet(rootPc, pcs){
+  if(!pcs || pcs.length<2) return '円上の音を2音以上クリックすると、選んだ音同士の響きも説明します。';
+  const rel=[...new Set(pcs.map(pc=>(pc-rootPc+12)%12))].sort((a,b)=>a-b);
+  const key=rel.join(',');
+  const exact={
+    '0,4,7':'メジャー。下から 4半音 → 3半音 の積み重ねで、明るく安定した響き。',
+    '0,3,7':'マイナー。下から 3半音 → 4半音 の積み重ねで、暗く落ち着いた響き。',
+    '0,4,8':'オーギュメント。4半音 → 4半音で、奇妙・浮遊感・不安定さがある。',
+    '0,3,6':'ディミニッシュ。3半音 → 3半音で、寂しさ・不安・緊張感が出やすい。',
+    '0,4,7,10':'ドミナント7th。解決したくなる強い緊張感がある。',
+    '0,4,7,11':'メジャー7th。明るさの中に繊細で都会的な緊張感がある。',
+    '0,3,7,10':'マイナー7th。暗さの中にジャズらしい柔らかさがある。',
+    '0,3,6,10':'ハーフディミニッシュ。かなり不安定で次のコードへ進みたくなる響き。',
+    '0,3,6,9':'ディミニッシュ7th。対称的で非常に不安定、緊張感が強い。',
+    '0,5,7':'sus4。3rdを避けた爽やか・開放的で解決待ちの響き。',
+    '0,2,7':'sus2。爽やかで透明感・開放感のある響き。'
+  };
+  if(exact[key]) return exact[key];
+  if(rel.includes(1)) return 'ルートとの半音衝突を含むため、かなり強い緊張・濁りが出る。';
+  if(rel.includes(6)) return 'トライトーンを含むため、不安定さやジャズ的な緊張感が強い。';
+  if(rel.includes(11)) return '長7度を含み、繊細で都会的な緊張感が出る。';
+  if(rel.includes(10)) return '短7度を含み、ブルージー／ドミナント的な色合いが出る。';
+  if(rel.includes(2) || rel.includes(5) || rel.includes(9)) return 'テンションを含むため、基本和音より広がりや色彩感が増す。';
+  return '選択した音の組み合わせによる響き。ルートからの距離と音同士の間隔で安定感・緊張感が変わる。';
+}
+function notePoint(pc, radius=42){
+  const angle=(-90 + pc*30)*Math.PI/180;
+  return {x:50+radius*Math.cos(angle), y:50+radius*Math.sin(angle)};
+}
+function harmonySvg(activePcs, selectedPcs){
+  if(!activePcs || activePcs.length<2) return '';
+  const pts=activePcs.map(pc=>notePoint(pc));
+  const lines=[];
+  for(let i=0;i<pts.length;i++){
+    const a=pts[i], b=pts[(i+1)%pts.length];
+    lines.push(`<line class="harmonyLine" x1="${a.x}%" y1="${a.y}%" x2="${b.x}%" y2="${b.y}%"></line>`);
+  }
+  if(selectedPcs && selectedPcs.length>=2){
+    const spts=selectedPcs.map(pc=>notePoint(pc));
+    for(let i=0;i<spts.length;i++){
+      const a=spts[i], b=spts[(i+1)%spts.length];
+      lines.push(`<line class="harmonyLine preview" x1="${a.x}%" y1="${a.y}%" x2="${b.x}%" y2="${b.y}%"></line>`);
+    }
+  }
+  return `<svg class="clockSvg" viewBox="0 0 100 100" preserveAspectRatio="none">${lines.join('')}</svg>`;
+}
+function toggleClockPitch(pc){
+  const i=USER_SELECTED_PCS.indexOf(pc);
+  if(i>=0) USER_SELECTED_PCS.splice(i,1);
+  else USER_SELECTED_PCS.push(pc);
+  updateChordClockFromInput();
+}
+
+function renderChordClock(chords){
+  const chips=document.getElementById('chordChips');
+  const out=document.getElementById('chordClockOutput');
+  if(!chips || !out) return;
+  if(!chords.length){
+    chips.innerHTML='';
+    out.innerHTML='<div class="empty">コードを入力すると，ここに12音クロックを表示します。</div>';
+    return;
+  }
+  if(SELECTED_CHORD_INDEX >= chords.length) SELECTED_CHORD_INDEX = chords.length-1;
+  chips.innerHTML=chords.map((c,i)=>`<button type="button" class="chordChip ${i===SELECTED_CHORD_INDEX?'active':''}" onclick="selectChordForClock(${i})">${escapeHtml(displayChordSymbol(c))}</button>`).join('');
+  const chord=chords[SELECTED_CHORD_INDEX];
+  const info=chordIntervals(chord);
+  if(!info){
+    out.innerHTML=`<div class="toneWarn"><b>${escapeHtml(chord)}</b> のコード構成を判定できませんでした。ルート＋コードタイプの表記を確認してください。</div>`;
+    return;
+  }
+
+  const radius=42; // percent
+  const notes=pitchLabels().map((label,pc)=>{
+    const angle=(-90 + pc*30) * Math.PI / 180;
+    const left=50 + radius*Math.cos(angle);
+    const top=50 + radius*Math.sin(angle);
+    const active=info.pcs.includes(pc);
+    const root=pc===info.rootPc;
+    const selected=USER_SELECTED_PCS.includes(pc);
+    return `<div class="pitchNote ${active?'activeTone':''} ${root?'rootTone':''} ${selected?'userSelected':''}" 
+      style="left:${left.toFixed(2)}%;top:${top.toFixed(2)}%" 
+      onclick="toggleClockPitch(${pc})" title="クリックで響きの試算に追加/削除">${label}</div>`;
+  }).join('');
+  const toneNames=info.pcs.map(pc=>preferredNoteName(pc,chord));
+  const pills=toneNames.map((n,i)=>`<span class="tonePill ${i===0?'root':''}">${escapeHtml(n)}</span>`).join('');
+  const quality=basicQualityFromIntervals(info.rootPc, info.pcs);
+  const stepInfo=semitoneStepsFromChord(info.rootPc, info.pcs);
+  const basicTriadSteps=stepInfo.steps.slice(0,2).join(' → ') || '—';
+  const roles=info.pcs.map(pc=>{
+    const semi=(pc-info.rootPc+12)%12;
+    const [name,desc]=toneRole(semi,info.type);
+    return `<div class="harmonyItem"><b>${escapeHtml(preferredNoteName(pc,chord))}：${escapeHtml(name)}</b><span>${escapeHtml(desc)}</span></div>`;
+  }).join('');
+  const selectedText=USER_SELECTED_PCS.length
+    ? USER_SELECTED_PCS.map(pc=>preferredNoteName(pc,chord)).join('・')
+    : '未選択';
+  const selectedDesc=describeSelectedSet(info.rootPc, USER_SELECTED_PCS);
+  out.innerHTML=`
+    <div class="clockArea">
+      <div class="pitchClock">
+        ${harmonySvg(info.pcs, USER_SELECTED_PCS)}
+        ${notes}
+        <div class="clockCenter">
+          <div class="clockChord">${escapeHtml(displayChordSymbol(chord))}</div>
+          <div class="clockType">${escapeHtml(info.type)}</div>
+        </div>
+      </div>
+      <div class="toneInfo">
+        <h3>構成音</h3>
+        <div class="toneList">${pills}</div>
+        <div class="toneExplain">
+          <b>実線</b>＝現在のコードを構成する音同士のつながり。<br>
+          <b style="color:#7c3aed">紫の選択</b>＝自分で試したい音。2音以上選ぶと点線で結びます。<br>
+          円上の音をクリックすると「その音を足したらどんな響きになるか」を試せます。
+        </div>
+        <div class="qualityRuleBox">
+          <div class="qualityRuleTitle">三和音の積み重ねから見るコードタイプ</div>
+          <div class="qualityRuleText">
+            下の音から次の音までの半音数で判定します。<br>
+            <b>4 → 3 = major</b> ／ <b>3 → 4 = minor</b> ／ <b>4 → 4 = aug</b> ／ <b>3 → 3 = dim</b><br>
+            現在のコード：<span class="qualityBadge">${escapeHtml(quality.quality)}</span>
+            基本3音の間隔：<b>${escapeHtml(basicTriadSteps)}</b>
+            <div class="qualityImpression">響きの印象：${escapeHtml(quality.impression)}</div>
+          </div>
+        </div>
+        <div class="harmonyPanel">
+          <h4>コードタイプと響きの目安</h4>
+          <div class="harmonyGrid">${qualityReferenceHtml()}</div>
+        </div>
+        <div class="harmonyPanel">
+          <h4>各構成音の役割・響き</h4>
+          <div class="harmonyGrid">${roles}</div>
+          <div class="selectedHarmony">
+            <div class="selectedHarmonyTitle">選択中：${escapeHtml(selectedText)}</div>
+            <div class="selectedHarmonyBody">${escapeHtml(selectedDesc)}</div>
+          </div>
+          <div class="clockHint">※響きの説明は、ルートからの音程と一般的なジャズ和声上の役割を簡易的に示したものです。</div>
+        </div>
+      </div>
+    </div>`;
+}
+function selectChordForClock(index){
+  SELECTED_CHORD_INDEX=index;
+  USER_SELECTED_PCS=[];
+  const raw=document.getElementById('input').value.trim();
+  const chords=raw.split(/[\s,→]+/).filter(Boolean);
+  renderChordClock(chords);
+}
+function updateChordClockFromInput(){
+  const raw=document.getElementById('input').value.trim();
+  const chords=raw.split(/[\s,→]+/).filter(Boolean);
+  renderChordClock(chords);
+}
+
+// MusicXML
+function getDirectText(parent, tagName){ const el = parent.getElementsByTagName(tagName)[0]; return el ? (el.textContent || '').trim() : ''; }
+function alterToSymbol(alterText){ const n = Number(alterText || 0); if(n === -2) return 'bb'; if(n === -1) return 'b'; if(n === 1) return '#'; if(n === 2) return '##'; return ''; }
+function kindToSuffix(kindEl){
+  if(!kindEl) return '';
+  const text = (kindEl.getAttribute('text') || '').trim(); const value = (kindEl.textContent || '').trim().toLowerCase(); const t = text.replace(/Δ/g,'maj').replace(/−/g,'-').toLowerCase();
+  if(['maj7','ma7','major7','m7+'].includes(t)) return 'maj7'; if(['m7','min7','-7'].includes(t)) return 'min7'; if(['7','dom7'].includes(t)) return '7'; if(['m','min','-'].includes(t)) return 'min'; if(['maj','major',''].includes(t)) return '';
+  if(value.includes('major-seventh')) return 'maj7'; if(value.includes('minor-seventh')) return 'min7'; if(value.includes('dominant')) return '7'; if(value.includes('half-diminished')) return 'm7b5'; if(value.includes('diminished')) return 'dim'; if(value.includes('minor')) return 'min'; if(value.includes('major')) return '';
+  return text || value;
+}
+function bassToSlash(harmony){ const bass = harmony.getElementsByTagName('bass')[0]; if(!bass) return ''; const step = getDirectText(bass,'bass-step'); if(!step) return ''; return '/' + step + alterToSymbol(getDirectText(bass,'bass-alter')); }
+function musicXmlHarmonyToChord(harmony){ const root = harmony.getElementsByTagName('root')[0]; if(!root) return ''; const step=getDirectText(root,'root-step'); if(!step) return ''; const alter=alterToSymbol(getDirectText(root,'root-alter')); const kind=harmony.getElementsByTagName('kind')[0]; return step + alter + kindToSuffix(kind) + bassToSlash(harmony); }
+function extractChordsFromMusicXML(xmlText){ const parser=new DOMParser(); const xml=parser.parseFromString(xmlText,'application/xml'); if(xml.getElementsByTagName('parsererror').length) throw new Error('XMLとして読み込めませんでした。'); return Array.from(xml.getElementsByTagName('harmony')).map(musicXmlHarmonyToChord).filter(Boolean); }
+function loadMusicXMLFile(event){ const file=event.target.files && event.target.files[0]; if(!file) return; const status=document.getElementById('xmlStatus'); const reader=new FileReader(); reader.onload=()=>{ try{ const chords=extractChordsFromMusicXML(String(reader.result||'')); if(!chords.length){ status.innerHTML='<span class="warn">コード記号が見つかりませんでした。</span><br>このMusicXMLに harmony タグがない可能性があります。'; return; } setInputChords(chords); status.innerHTML=`<b>${escapeHtml(file.name)}</b> から ${chords.length} 個のコードを抽出しました。<br><code>${escapeHtml(chords.join(' '))}</code>`; }catch(err){ status.innerHTML=`<span class="warn">読み込みエラー：</span>${escapeHtml(err.message||err)}`; } }; reader.onerror=()=>status.innerHTML='<span class="warn">ファイル読み込みに失敗しました。</span>'; reader.readAsText(file); }
+function clearXmlStatus(){ document.getElementById('xmlStatus').innerHTML='コード記号（harmonyタグ）が入っているMusicXMLを選ぶと，コード列を抽出して上の入力欄に入れます。'; const f=document.getElementById('musicxmlFile'); if(f) f.value=''; }
+
+// JHT-like JSON
+function loadJhtJsonFile(event){ const file=event.target.files && event.target.files[0]; if(!file) return; const status=document.getElementById('jhtStatus'); const reader=new FileReader(); reader.onload=()=>{ try{ const data=JSON.parse(String(reader.result||'')); LOADED_JHT_TUNES = findTuneObjects(data); renderJhtSelect(); status.innerHTML = `<b>${escapeHtml(file.name)}</b> から ${LOADED_JHT_TUNES.length} 件の候補を読み込みました。曲を選択してください。`; }catch(err){ status.innerHTML=`<span class="warn">JSON読み込みエラー：</span>${escapeHtml(err.message||err)}`; } }; reader.readAsText(file); }
+function findTuneObjects(data){
+  if(Array.isArray(data)) return data.map((x,i)=>normalizeTune(x,i));
+  if(data && typeof data === 'object'){
+    for(const key of ['pieces','tunes','songs','standards','data','items']) if(Array.isArray(data[key])) return data[key].map((x,i)=>normalizeTune(x,i));
+    const vals = Object.entries(data).filter(([k,v])=>v && typeof v==='object').map(([k,v],i)=>normalizeTune({...v, _keyTitle:k}, i));
+    return vals.length ? vals : [normalizeTune(data,0)];
+  }
+  return [];
+}
+function normalizeTune(obj,i){ return {raw:obj, title:getTuneTitle(obj,i), chords:extractChordStrings(obj), tree:extractTreeObject(obj)}; }
+function getTuneTitle(obj,i){ return String(obj?.title || obj?.name || obj?.metadata?.title || obj?.meta?.title || obj?._keyTitle || `item_${i+1}`); }
+function chordFromObj(o){
+  if(typeof o==='string') return o;
+  if(!o || typeof o!=='object') return '';
+  return o.chord || o.symbol || o.label || o.name || o.figure || o.harmony || o.value || (o.root && (String(o.root)+String(o.kind||''))) || '';
+}
+function extractChordStrings(obj){
+  const directKeys=['chords','chord_sequence','chordSequence','sequence','harmony','harmonies','events'];
+  for(const k of directKeys){
+    const arr = obj && obj[k];
+    if(Array.isArray(arr)){ const chords=arr.map(chordFromObj).filter(isChordLike); if(chords.length) return chords; }
+  }
+  const found=[];
+  function rec(x, depth=0){
+    if(depth>5 || !x) return;
+    if(Array.isArray(x)){ x.forEach(v=>rec(v, depth+1)); return; }
+    if(typeof x==='object'){
+      const c=chordFromObj(x); if(isChordLike(c)) found.push(c);
+      Object.entries(x).forEach(([k,v])=>{ if(!['children','tree','trees','analysis','analyses'].includes(k)) rec(v, depth+1); });
+    }
+  }
+  rec(obj); return [...new Set(found)].slice(0,200);
+}
+function isChordLike(s){ return typeof s==='string' && /^[A-G](#|b|♭|♯)?[%øØ]?(maj|min|m|M|-|dim|aug|sus|add)?[0-9]*/i.test(s.trim()); }
+function extractTreeObject(obj){
+  const candidates=[];
+  function push(v){ if(v && typeof v==='object') candidates.push(v); }
+  ['tree','syntax_tree','syntaxTree','analysis','parse_tree','parseTree','annotation'].forEach(k=>push(obj?.[k]));
+  ['trees','analyses','annotations'].forEach(k=>{ const v=obj?.[k]; if(Array.isArray(v)) v.forEach(push); else push(v); });
+  function hasTreeShape(x){ return x && typeof x==='object' && ('children' in x) && ('label' in x || 'cat' in x || 'name' in x); }
+  for(const c of candidates) if(hasTreeShape(c)) return c;
+  let found=null;
+  function rec(x, depth=0){ if(found || depth>6 || !x) return; if(hasTreeShape(x)){ found=x; return; } if(Array.isArray(x)) x.forEach(v=>rec(v,depth+1)); else if(typeof x==='object') Object.values(x).forEach(v=>rec(v,depth+1)); }
+  rec(obj); return found;
+}
+function renderJhtSelect(){ const sel=document.getElementById('jhtSelect'); sel.innerHTML='<option value="">曲を選択</option>' + LOADED_JHT_TUNES.map((t,i)=>`<option value="${i}">${escapeHtml(t.title)} (${t.chords.length} chords${t.tree?' / treeあり':''})</option>`).join(''); }
+function selectJhtTune(){ const idx=document.getElementById('jhtSelect').value; if(idx==='') return; const tune=LOADED_JHT_TUNES[Number(idx)]; if(!tune) return; document.getElementById('jhtStatus').innerHTML = `<b>${escapeHtml(tune.title)}</b> を選択しました。コード ${tune.chords.length} 個${tune.tree?'，構文木あり':'，構文木は未検出'}。`; if(tune.chords.length) setInputChords(tune.chords); CURRENT_EXTERNAL_TREE=tune.tree||null; renderExternalTree(); }
+function clearJhtStatus(){ document.getElementById('jhtStatus').innerHTML='JHTのようにコード列や構文木を持つJSONを読み込むと，コード列・正解木候補を表示します。'; document.getElementById('jhtSelect').innerHTML='<option value="">JHT JSONを読み込むと曲一覧が出ます</option>'; document.getElementById('jhtTreeCard').style.display='none'; CURRENT_EXTERNAL_TREE=null; LOADED_JHT_TUNES=[]; const f=document.getElementById('jhtFile'); if(f) f.value=''; }
+function renderExternalTree(){ const card=document.getElementById('jhtTreeCard'); const out=document.getElementById('jhtTreeOutput'); if(!CURRENT_EXTERNAL_TREE){ card.style.display='none'; return; } card.style.display='block'; out.innerHTML = `<div class="treeCard"><div class="treeHead"><span>外部JSON構文木</span><button class="secondary small" onclick="downloadExternalTree()">この木をJSON保存</button></div><div class="treePretty">${colorizeTreeText(externalTreeToPretty(CURRENT_EXTERNAL_TREE))}</div></div>`; }
+
+function setInputChords(chords){ document.getElementById('input').value = chords.join(' '); SELECTED_CHORD_INDEX=0; USER_SELECTED_PCS=[]; updateChordClockFromInput(); parseInput(); }
+function parseInput(){
+  const raw=document.getElementById('input').value.trim(); const chords=raw.split(/[\s,→]+/).filter(Boolean); CURRENT_CHORDS=chords; renderChordClock(chords);
+  const results=document.getElementById('results'); const flow=document.getElementById('flow');
+  flow.innerHTML=chords.map((c,i)=>`<span class="pill">${escapeHtml(c)}</span>${i<chords.length-1?'<span class="arrow">→</span>':''}`).join('');
+  if(!chords.length){ document.getElementById('kCoverage').textContent='コードを入力してください。'; CURRENT_STEPS=[]; results.innerHTML='<div class="empty">コードを入力してください。</div>'; kRenderEvaluation(); return; }
+  const coverage=chords.map(c=>kStatusChord(c,K_SELECTED_KEY));
+  const unknown=coverage.filter(c=>!c.cats.length).map(c=>c.symbol);
+  const recognized=coverage.filter(c=>c.recognized).length;
+  document.getElementById('kCoverage').innerHTML=`選択キー：<b>${escapeHtml(K_SELECTED_KEY)}</b>　表記認識：<b>${recognized}/${chords.length}</b>　現行CFGの役割に対応：<b>${coverage.filter(c=>c.cats.length).length}/${chords.length}</b>`+(unknown.length?`<br><span class="warn">未対応：${coverage.filter(c=>!c.cats.length).map(c=>escapeHtml(c.symbol+'（'+c.reason+'）')).join('、')}</span>`:'');
+  CURRENT_STEPS=parse(chords);
+  let html = unknown.length ? `<div class="empty"><span class="warn">辞書未登録コード：</span>${unknown.map(escapeHtml).join(', ')}<br>登録がないコードは解析候補が途切れる場合があります。</div>` : '';
+  CURRENT_STEPS.forEach(step=>{
+    html += `<div class="step"><div class="stepTitle"><strong>Step ${step.idx}: ${escapeHtml(step.chord)} を入力</strong><span class="count">候補木 ${step.global.length} 個 / local ${step.local.length} 個</span></div>`;
+    if(step.global.length===0){ html += `<div class="empty"><span class="warn">解析候補がありません。</span><br>辞書または文法ルールにこの流れを処理する規則がない可能性があります。</div>`; }
+    else{
+      html += `<div class="treeWrap">`;
+      step.global.slice(0,8).forEach((t,i)=>{ const exps=expectations(t); html += `<div class="treeCard"><div class="treeHead"><span>候補 ${i+1} / P(木)=${kFmt(kTreeProb(t))} ${isComplete(t)?'（sub-complete）':'（active）'} <button class="secondary small" onclick="kOpenEditorCandidate(${step.idx-1},${i})">Editorへ送る</button></span><span>${exps.length ? '期待: '+exps.map(e=>'?'+e).join(', ') : '未確定なし'}</span></div><div class="viewLabel">枝表示（実線＝確定 / 点線＝未確定）</div><div class="treeVisual">${termToVisualTree(t)}</div><div class="viewLabel">構文木ビュー</div><div class="treePretty">${colorizeTreeText(termToPrettyTree(t))}</div><div class="viewLabel">テキスト表示</div><div class="treeText">${colorizeTreeText(termToText(t))}</div></div>`; });
+      html += `</div>`;
+    }
+    html += `</div>`;
+  });
+  results.innerHTML=html;
+  kRenderEvaluation();
+}
+function setExample(s){ document.getElementById('input').value=s; SELECTED_CHORD_INDEX=0; USER_SELECTED_PCS=[]; updateChordClockFromInput(); parseInput(); }
+function renderTables(){ document.getElementById('rulesTable').innerHTML='<tr><th>規則</th><th>意味</th><th>引用元</th></tr>'+RULES.map(r=>`<tr><td><code>${r.lhs} → ${r.rhs.join(' ')}</code></td><td>${r.label}</td><td>${r.source}</td></tr>`).join(''); const samples=[...new Set(['Cmaj7','C6','Dmin7','Dmin9','G7','G13','D7','A7','Fmaj7','Bmin7b5','Abmin7','Db7'].map(c=>kTransposeChord(c,K_SELECTED_KEY)))];const rows=samples.map(c=>`<tr><td><code>${escapeHtml(c)}</code></td><td>${kRoleCategories(c,K_SELECTED_KEY).join(', ')||'未対応'}</td></tr>`).join('');document.getElementById('lexTable').innerHTML=`<tr><th>コード表記（キー${escapeHtml(K_SELECTED_KEY)}）</th><th>カテゴリ</th></tr>`+rows; }
+
+function downloadJSON(filename, data){ const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'}); const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=filename; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(a.href); }
+function downloadFinalTree(){ const last=CURRENT_STEPS[CURRENT_STEPS.length-1]; if(!last || !last.global.length){ alert('保存できる候補木がありません。'); return; } downloadJSON('final_tree_candidate.json', last.global[0]); }
+function downloadAllSteps(){ if(!CURRENT_STEPS.length){ alert('解析結果がありません。'); return; } downloadJSON('chart_parser_steps.json', {chords:CURRENT_CHORDS, steps:CURRENT_STEPS}); }
+function downloadInputChords(){ const blob=new Blob([CURRENT_CHORDS.join(' ')],{type:'text/plain'}); const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='chords.txt'; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(a.href); }
+function downloadExternalTree(){ if(!CURRENT_EXTERNAL_TREE){ alert('外部構文木がありません。'); return; } downloadJSON('external_jht_tree.json', CURRENT_EXTERNAL_TREE); }
+
+
+/* ==== v9 Parser / Editor connection + roundtrip validation ==== */
+let K_EDITOR_READY=false;
+let K_EDITOR_PENDING=null;
+let K_EDITED_TREE=null;
+let K_ROUNDTRIP=null;
+function kInitEmbeddedEditor(){
+  const frame=document.getElementById('kEditorFrame');
+  if(!frame)return;
+  frame.srcdoc=K_EMBEDDED_EDITOR_HTML;
+}
+window.addEventListener('message',event=>{
+  const iframe=document.getElementById('kEditorFrame');
+  if(!iframe || event.source!==iframe.contentWindow)return;
+  const msg=event.data;if(!msg||typeof msg!=='object')return;
+  if(msg.type==='chart-editor:ready'){
+    K_EDITOR_READY=true;
+    if(K_EDITOR_PENDING)kSendEditorPending();
+  }
+  if(msg.type==='chart-editor:imported')document.getElementById('kEditorStatus').textContent='構文木をEditorに渡しました（キー：'+msg.key+'）。編集後、Editor内の「編集結果をParserに返す」を押してください。';
+  if(msg.type==='chart-editor:export')kReceiveEditedTree(msg);
+});
+function kSendEditorPending(){
+  if(!K_EDITOR_READY||!K_EDITOR_PENDING)return;
+  document.getElementById('kEditorFrame').contentWindow.postMessage(K_EDITOR_PENDING,'*');
+  K_EDITOR_PENDING=null;
+}
+function kOpenEditorBest(){
+  const last=CURRENT_STEPS.at(-1);
+  if(!last||!last.global.length){alert('送信できる構文木がありません。先に解析してください。');return;}
+  kOpenEditorCandidate(CURRENT_STEPS.length-1,0);
+}
+function kOpenEditorCandidate(stepIndex,candidateIndex){
+  const t=CURRENT_STEPS[stepIndex]?.global?.[candidateIndex];
+  if(!t)return alert('候補木がありません。');
+  document.getElementById('kLinkedEditorCard').style.display='block';
+  document.getElementById('kEditorStatus').textContent='送信する候補：Step '+(stepIndex+1)+' / '+(candidateIndex+1)+'位、キー：'+K_SELECTED_KEY;
+  K_EDITOR_PENDING={type:'chart-editor:import',tree:t,key:K_SELECTED_KEY};
+  kSendEditorPending();
+  document.getElementById('kLinkedEditorCard').scrollIntoView({block:'start',behavior:'smooth'});
+}
+function kCloseEditor(){document.getElementById('kLinkedEditorCard').style.display='none';}
+function kLeafTokens(n,out=[]){if(!n||typeof n!=='object')return out;if(n.token)out.push(n.token);if(n.children)for(const ch of n.children)kLeafTokens(ch,out);return out;}
+function kShape(n){return !n?'':(n.undecided?'?':'')+n.cat+(n.token?'#'+normChord(n.token):'')+(n.children?.length?'('+n.children.map(kShape).join(',')+')':'');}
+function kReceiveEditedTree(msg){
+  const t=msg.tree;
+  if(!t || !t.cat)return;
+  K_EDITED_TREE=clone(t);
+  const chords=kLeafTokens(t);
+  if(!chords.length){document.getElementById('kRoundtrip').textContent='Editorから返された木にコード葉がありません。';return;}
+  K_SELECTED_KEY=msg.key||K_SELECTED_KEY;
+  document.getElementById('kKeySelect').value=K_SELECTED_KEY;
+  document.getElementById('input').value=chords.join(' ');
+  SELECTED_CHORD_INDEX=0;parseInput();
+  const last=CURRENT_STEPS.at(-1);
+  const exact=last?.global?.filter(t2=>kShape(t2)===kShape(t))||[];
+  const hadUndecided=!!findLeftmostUndecided(t);
+  const err=(msg.issues||[]).filter(i=>i.severity==='error');
+  K_ROUNDTRIP={key:K_SELECTED_KEY,chords,editedTree:clone(t),editedTreePartial:hadUndecided,editorErrors:err,exactMatchCandidateCount:exact.length,parsedCandidateCount:last?.global?.length||0,parsedCandidateTrees:last?.global?.slice(0,8)||[],probabilityStats:kStepStats(),modelSource:K_DATA_SOURCE};
+  document.getElementById('kRoundtrip').innerHTML=`<b>Editor → Parser の再解析を実行しました。</b><br>コード列：<code>${chords.map(escapeHtml).join(' → ')}</code><br>再解析の候補木：<b>${K_ROUNDTRIP.parsedCandidateCount}件</b>、編集木と完全一致する候補：<b>${exact.length}件</b>（表示対象のビーム内）${hadUndecided?'<br><b>注意：</b>未確定枝が残っています。比較は途中段階を含む暫定結果です。':''}<br><span class="kMini">完全一致は編集構造の再現確認であり、音楽的な自然さの評価ではありません。</span>`;
+  document.getElementById('kLinkedEditorCard').scrollIntoView({block:'start',behavior:'smooth'});
+}
+function kSaveRoundtrip(){if(!K_ROUNDTRIP)return alert('Editorから木を返して再解析してください。');downloadJSON('parser_editor_roundtrip_v9.json',K_ROUNDTRIP);}
+
+/* ==== K研究 PCFG / Expectation AI engine ==== */
+const K_DEMO_COUNTS=[1,20,30,18,7,5,1,1,1,1,1,1];
+let K_COUNTS=K_DEMO_COUNTS.slice();
+let K_DATA_SOURCE='仮カウント（説明用）';
+// このアプリはPCFGに基づく確率推論（シンボリックAI）。LLMやオンライン学習は未搭載。
+function kRuleProbabilities(){
+  const total={};
+  RULES.forEach((r,i)=>{total[r.lhs]=(total[r.lhs]||0)+K_COUNTS[i]});
+  return RULES.map((r,i)=>({lhs:r.lhs,rhs:r.rhs, count:K_COUNTS[i], probability:total[r.lhs]?K_COUNTS[i]/total[r.lhs]:0}));
+}
+function kRuleIdx(t){
+  if(!t.children || !t.children.length) return -1;
+  const rhs=t.children.map(x=>x.cat);
+  return RULES.findIndex(r=>r.lhs===t.cat && r.rhs.length===rhs.length && r.rhs.every((s,i)=>s===rhs[i]));
+}
+function kTreeProb(t){
+  if(!t) return 0;
+  if(t.undecided || t.token) return 1;
+  if(!t.children || !t.children.length) return 1;
+  const idx=kRuleIdx(t); if(idx<0) return 0;
+  const p=kRuleProbabilities()[idx].probability;
+  return p * t.children.reduce((a,ch)=>a*kTreeProb(ch),1);
+}
+function kFmt(num){
+  if(num===null || num===undefined || !Number.isFinite(num))return '—';
+  if(num===0)return '0';
+  if(num<.0001)return num.toExponential(2);
+  return num.toFixed(4);
+}
+function kStepStats(steps=CURRENT_STEPS){
+  let prev=null;
+  return steps.map(s=>{
+    const p=s.global.length?kTreeProb(s.global[0]):null;
+    const u=p===null || prev===null || prev===0 ?null:p/prev;
+    prev=p;
+    return {chord:s.chord,p,u,candidates:s.global.length, capped:s.wasCapped};
+  });
+}
+function kRenderEvaluation(){
+  const stats=kStepStats();const last=stats.at(-1);
+  document.getElementById('kBestProb').textContent=last?kFmt(last.p):'—';
+  document.getElementById('kU').textContent=last?kFmt(last.u):'—';
+  document.getElementById('kSurprise').textContent=last&&last.u!==null&&last.u<=1+1e-8?`${Math.max(0,(1-last.u)*100).toFixed(1)}%`:'—';
+  document.getElementById('kTrend').innerHTML=stats.length?stats.map((s,i)=>{
+    const h=s.u===null?0:Math.max(2,Math.min(100,(1-s.u)*100));
+    return `<div class="kBar" title="ステップ${i+1} / U=${s.u===null?'未定義':kFmt(s.u)}"><span class="kNum">${s.u===null?'—':kFmt(s.u)}</span><div class="kFill ${h>=60?'high':''}" style="height:${h}%"></div><span class="kChord">${escapeHtml(s.chord)}</span></div>`;
+  }).join(''):'<div class="kHelp">コード進行を解析すると評価を表示します。</div>';
+  let notes='棒が高いほど 1−U（参考表示）が大きい。最初のコードのUは省略しています（論文ではn=1に別定義あり）。';
+  if(stats.some(s=>s.p===null)) notes+=' 解析候補が0件のステップ以降はUを算出できません（意外性が最大という意味ではありません）。';
+  if(stats.some(s=>s.u!==null&&s.u>1.00000001))notes+=' <b style="color:#b91c1c">Uが1を超えています：ビーム探索などによる探索近似の可能性があります。</b>';
+  if(stats.some(s=>s.capped))notes+=' 探索上限に達したステップがあります。';
+  document.getElementById('kMeasureNotes').innerHTML=notes;
+  kSuggest();
+}
+const K_CANONICAL=['Cmaj7','Dmin7','G7','D7','Emin7','A7','Amin7','Fmaj7','Gmin7','C7','Abmin7','Db7','Bb7'];
+function kSuggest(){
+  const target=Number(document.getElementById('kTarget').value)/100;
+  document.getElementById('kTargetLabel').textContent=Math.round(target*100)+'%';
+  const result=document.getElementById('kSuggestions');
+  if(!CURRENT_STEPS.length){result.innerHTML='<div class="kHelp">コードを入力して解析してください。</div>';return;}
+  const last=CURRENT_STEPS.at(-1);if(!last.global.length){result.innerHTML='<div class="kWarn">現在のコード列に解析候補がないため、次コードの確率評価はできません。</div>';return;}
+  const prevP=kTreeProb(last.global[0]);
+  if(!prevP){result.innerHTML='<div class="kWarn">現在の木の生成確率が0です。学習用カウント（規則確率）を確認してください。</div>';return;}
+  const rows=[];
+  [...new Set(K_CANONICAL.map(ch=>kTransposeChord(ch,K_SELECTED_KEY)))].forEach(ch=>{
+    const next=advanceOne(last.global,ch);
+    if(!next.global.length)return;
+    const p=kTreeProb(next.global[0]);
+    const u=p/prevP;
+    const surprise=1-u;
+    if(!Number.isFinite(u)||u<0)return;
+    const exps=expectations(next.global[0]);
+    rows.push({ch,p,u,surprise,exps,rank:Math.abs(surprise-target)});
+  });
+  rows.sort((a,b)=>a.rank-b.rank || b.p-a.p);
+  result.innerHTML=rows.length?rows.slice(0,6).map((r,i)=>`<div class="kSuggestion"><strong>${escapeHtml(r.ch)}</strong><span class="kChip" style="float:right">${i+1}位</span><div class="kMini" style="margin-top:6px">予測U <b>${kFmt(r.u)}</b> / 逸脱 <b>${(100*r.surprise).toFixed(1)}%</b></div><p>次の期待カテゴリ：${r.exps.length?escapeHtml(r.exps.map(e=>'?'+e).join(', ')):'未確定なし'}<br>予測木確率：${kFmt(r.p)}</p><button onclick="kAppendChord('${r.ch}')">このコードを追加</button></div>`).join(''):'<div class="kWarn">現在の辞書と文法では、追加可能な候補が見つかりません。解析の終端、またはカバー範囲の制限が考えられます。</div>';
+}
+function kAppendChord(ch){
+  const el=document.getElementById('input');
+  el.value=(CURRENT_CHORDS.join(' ')+' '+ch).trim();
+  SELECTED_CHORD_INDEX=CURRENT_CHORDS.length;
+  parseInput();
+  el.scrollIntoView({behavior:'smooth',block:'center'});
+}
+function kRefreshModel(){
+  let model=kRuleProbabilities(),html='<tr><th>規則</th><th>カウント</th><th>確率</th></tr>';
+  model.forEach((r,i)=>{html+=`<tr><td class="kMono">${escapeHtml(r.lhs+' → '+r.rhs.join(' '))}</td><td><input type="number" min="0" max="999999" step="1" value="${r.count}" aria-label="規則${i+1}の使用回数" onchange="kChangeCount(${i},this.value)"></td><td>${(100*r.probability).toFixed(1)}%</td></tr>`;});
+  document.getElementById('kRuleCountTable').innerHTML=html;
+  const byLhs={};model.forEach(x=>byLhs[x.lhs]=(byLhs[x.lhs]||0)+x.probability);
+  const missing=Object.entries(byLhs).filter(([lhs,p])=>Math.abs(p-1)>1e-9).map(x=>x[0]);
+  document.getElementById('kModelStatus').innerHTML=`データ：<b>${escapeHtml(K_DATA_SOURCE)}</b><br>式(3)の正規化：${missing.length?'未成立（'+escapeHtml(missing.join(', '))+' の合計カウント0）':'全て成立（各左辺で合計100%）'}`;
+  const badge=document.getElementById('kModelBadge');
+  badge.innerHTML=K_DATA_SOURCE.startsWith('構文木コーパス')?`<b>学習コーパス：</b> ${escapeHtml(K_DATA_SOURCE)}。規則分布が入力データの偏りに依存します。`:`<b>注意：</b> 現在の規則確率は「${escapeHtml(K_DATA_SOURCE)}」による値です。論文の学習済み数値ではありません。`;
+}
+function kRecompute(){ kRefreshModel(); if(CURRENT_CHORDS.length)parseInput();else kRenderEvaluation(); }
+function kChangeCount(i,v){
+  const n=Number(v);if(!Number.isSafeInteger(n)||n<0||n>999999){alert('0〜999999の整数を入力してください');kRefreshModel();return;}
+  const prev=K_COUNTS[i];K_COUNTS[i]=n;
+  if(!RULES.some((r,j)=>r.lhs===RULES[i].lhs && K_COUNTS[j]>0)){
+    K_COUNTS[i]=prev;alert('各左辺に対し少なくとも1つ、カウントが正の規則が必要です');kRefreshModel();return;
+  }
+  K_DATA_SOURCE='手入力のカウント';kRecompute();
+}
+function kUseUniform(){K_COUNTS=RULES.map(()=>1);K_DATA_SOURCE='均等カウント（未学習）';kRecompute();}
+function kUseDemo(){K_COUNTS=K_DEMO_COUNTS.slice();K_DATA_SOURCE='仮カウント（説明用）';kRecompute();}
+function kCollectCorpusTrees(doc){
+  if(Array.isArray(doc))return doc;
+  if(doc&&Array.isArray(doc.trees))return doc.trees;
+  if(doc&&Array.isArray(doc.examples))return doc.examples.map(x=>x.tree||x).filter(Boolean);
+  if(doc&&doc.cat&&Array.isArray(doc.children))return [doc];
+  return [];
+}
+function kImportCorpus(event){
+ const f=event.target.files?.[0];if(!f)return;
+ const reader=new FileReader();reader.onload=()=>{
+   try{
+     const data=JSON.parse(reader.result),trees=kCollectCorpusTrees(data);
+     if(!trees.length)throw Error('構文木配列が見つかりません。{trees:[...]} または木の配列を指定してください。');
+     const counts=RULES.map(()=>0);let unknown=0,found=0;
+     function walk(node){
+       if(!node||typeof node!=='object')return;
+       if(Array.isArray(node.children)&&node.children.length){
+         const i=kRuleIdx(node);if(i>=0){counts[i]++;found++;}else unknown++;
+         node.children.forEach(walk);
+       }
+     }
+     trees.forEach(walk);
+     if(!found)throw Error('現行Parserの文法規則に対応する内側ノードがありません。cat/children形式を確認してください。');
+     // コーパス未出現の規則は平滑化を行わないと確率が0になるため、UIで明示した上で小さな擬似カウントを加える。
+     K_COUNTS=counts.map(x=>x+1);
+     K_DATA_SOURCE=`構文木コーパス「${f.name}」（${trees.length}本、適合規則${found}件、非対応${unknown}件、各規則+1平滑化）`;
+     kRecompute();
+   }catch(e){alert('学習データ読込失敗：'+e.message);}
+ };reader.readAsText(f);
+}
+function kExportCounts(){
+  downloadJSON('k_pcfg_rule_probabilities.json',{source:K_DATA_SOURCE,note:'Rule count and conditional probabilities. Counts may be illustrative; corpus imports add +1 per rule.',rules:kRuleProbabilities()});
+}
+function kExportReport(){
+  downloadJSON('k_expectation_ai_report.json',{
+    model:'Symbolic AI / PCFG (not LLM)',source:K_DATA_SOURCE,
+    formula:'U(n)=P(bestTree(n))/P(bestTree(n-1)) for n>1',
+    caution:'Values depend on the prototype CFG, lexicon, candidate beam size and rule counts. Not a validated listening-surprise metric.',
+    rule_probabilities:kRuleProbabilities(),chords:CURRENT_CHORDS,steps:kStepStats(),
+    candidateTrees:CURRENT_STEPS.map(s=>s.global.slice(0,8).map(t=>({probability:kTreeProb(t),tree:t})))
+  });
+}
+
+document.getElementById('input').addEventListener('input', updateChordClockFromInput);
+const K_EMBEDDED_EDITOR_HTML="<!doctype html>\n<html lang=\"ja\">\n<head>\n<meta charset=\"utf-8\" />\n<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\" />\n<title>構文木エディタ v3 - 文法検証・分岐変換対応<\/title>\n<style>\n  :root{\n    --bg:#f6f7fb; --card:#fff; --ink:#1f2937; --muted:#6b7280; --line:#e5e7eb;\n    --accent:#2563eb; --accent2:#1e40af; --soft:#eff6ff; --danger:#dc2626;\n    --ok:#059669; --warn:#d97706; --cat:#1d4ed8; --rule:#0f766e; --violet:#7c3aed;\n  }\n  *{box-sizing:border-box}\n  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,\"Segoe UI\",sans-serif;background:var(--bg);color:var(--ink)}\n  header{padding:28px 20px 18px;background:linear-gradient(135deg,#111827,#1e3a8a);color:#fff}\n  header h1{margin:0 0 8px;font-size:28px;letter-spacing:.02em}\n  header p{margin:0;opacity:.92;line-height:1.65}\n  main{max-width:1240px;margin:0 auto;padding:22px 16px 44px}\n  .grid{display:grid;grid-template-columns:minmax(0,1fr) 390px;gap:16px;align-items:start}\n  .card{background:var(--card);border:1px solid var(--line);border-radius:16px;box-shadow:0 8px 24px rgba(15,23,42,.06);padding:18px;margin-bottom:16px}\n  h2{font-size:19px;margin:0 0 14px} h3{font-size:15px;margin:17px 0 9px;color:#374151}\n  textarea,input,select{width:100%;border:1px solid var(--line);border-radius:11px;padding:10px;font-size:14px;background:#fff;color:#111827}\n  textarea{min-height:135px;resize:vertical;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,\"Liberation Mono\",monospace;line-height:1.5}\n  button{border:0;border-radius:999px;padding:9px 13px;font-weight:700;cursor:pointer;background:var(--accent);color:#fff;margin:5px 5px 0 0}\n  button:hover{background:var(--accent2)} button:disabled{opacity:.45;cursor:not-allowed}\n  button.secondary{background:#e5e7eb;color:#111827} button.secondary:hover{background:#d1d5db}\n  button.ghost{background:#fff;color:#374151;border:1px solid var(--line)}\n  button.danger{background:var(--danger)} button.ok{background:var(--ok)} button.warn{background:var(--warn)}\n  .toolbar{display:flex;flex-wrap:wrap;align-items:center;gap:0;margin-top:8px}\n  .hint,.small{font-size:13px;color:var(--muted);line-height:1.65;margin:8px 0 0}\n  .hidden{display:none}.split{display:grid;grid-template-columns:1fr 1fr;gap:10px}\n  .sideRow{display:grid;grid-template-columns:112px 1fr;gap:8px;align-items:center;margin:8px 0}\n  .notice{border-left:5px solid var(--accent);background:#eff6ff;border-radius:12px;padding:12px;font-size:13px;line-height:1.7;color:#1f2937}\n  .warningBox{border-left-color:var(--warn);background:#fffbeb}.errorBox{border-left-color:var(--danger);background:#fef2f2}\n  .statusBar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px}\n  .badge{display:inline-flex;align-items:center;border-radius:999px;padding:5px 9px;font-size:12px;font-weight:800;background:#eef2ff;color:#3730a3}\n  .badge.ok{background:#ecfdf5;color:#047857}.badge.warn{background:#fffbeb;color:#b45309}.badge.error{background:#fef2f2;color:#b91c1c}\n  .treeVisual{background:#fff;border:1px solid var(--line);border-radius:10px;padding:12px;overflow:auto;min-height:280px;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,\"Liberation Mono\",monospace;font-size:13px;line-height:1.55}\n  .vNode{display:inline-block;border:1px solid #cbd5e1;border-radius:8px;padding:4px 9px;background:#fff;margin:2px 0;cursor:pointer;font:inherit}\n  .vNode:hover{box-shadow:0 0 0 2px #bfdbfe}.vNode.selected{box-shadow:0 0 0 3px #60a5fa}\n  .vNode.catNode{border-color:#bfdbfe;background:#eff6ff;color:#1d4ed8;font-weight:800}\n  .vNode.tokenNode{border-color:#bbf7d0;background:#f0fdf4;color:#047857;font-weight:800}\n  .vNode.expectNode{border-color:#fecaca;background:#fef2f2;color:#dc2626;font-weight:900}\n  .vNode.invalidNode{outline:2px solid #f59e0b;outline-offset:1px}\n  .vRule{color:var(--rule);font-weight:700;font-size:11px;margin-left:5px}\n  .vChildren{margin-left:24px}.vChild{position:relative;margin:4px 0;padding-left:18px}\n  .vChild::before{content:\"\";position:absolute;left:0;top:.95em;width:14px;border-top:2px solid #64748b}\n  .vChild::after{content:\"\";position:absolute;left:0;top:-8px;bottom:.78em;border-left:2px solid #64748b}\n  .vChild.last::after{bottom:calc(100% - .95em)}\n  .vChild.unconfirmed::before{border-top-style:dashed;border-top-color:#dc2626}\n  .vChild.unconfirmed::after{border-left-style:dashed;border-left-color:#dc2626}\n  .legend{display:flex;gap:10px;flex-wrap:wrap;font-size:12px;color:var(--muted);margin:4px 0 10px}\n  .legendLine{display:inline-flex;align-items:center;gap:5px}.legendLine::before{content:\"\";display:inline-block;width:28px;border-top:2px solid #64748b}\n  .legendLine.dashed::before{border-top-style:dashed;border-color:#dc2626}\n  .legendChip{border:1px solid var(--line);background:#fff;border-radius:999px;padding:4px 8px}\n  .treePretty,pre{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,\"Liberation Mono\",monospace;font-size:12.5px;line-height:1.6;white-space:pre;background:#fff;border:1px solid var(--line);border-radius:10px;padding:10px;overflow:auto}\n  pre{background:#0f172a;color:#e5e7eb;max-height:280px}.expect{color:var(--danger);font-weight:900}.token{color:var(--ok);font-weight:800}.cat{color:var(--cat);font-weight:800}.ruleText{color:var(--rule);font-weight:700}.branch{color:#94a3b8}\n  .candidateBox{border:1px solid #bfdbfe;background:#f8fbff;border-radius:12px;padding:12px;margin-top:10px}\n  .candidateList{display:flex;gap:6px;flex-wrap:wrap;margin-top:7px}.candidate{font-size:12px;border:1px solid #bfdbfe;background:#fff;border-radius:999px;padding:5px 8px;color:#1e40af;font-weight:700}\n  .issueList{margin:8px 0 0;padding-left:20px;font-size:13px;line-height:1.65}.issueList li.error{color:#b91c1c}.issueList li.warn{color:#b45309}\n  table{width:100%;border-collapse:collapse;font-size:12px}th,td{border-bottom:1px solid var(--line);padding:7px;text-align:left;vertical-align:top}th{background:#f9fafb}\n  .sourceBox{border:1px solid #bfdbfe;background:#eff6ff;border-radius:12px;padding:12px;font-size:13px;line-height:1.7}.sourceBox b{color:#1d4ed8}\n  @media(max-width:960px){.grid{grid-template-columns:1fr}.split{grid-template-columns:1fr}header h1{font-size:24px}}\n<\/style>\n<\/head>\n<body>\n<header>\n  <h1>構文木エディタ v3 <small style=\"font-size:14px;opacity:.7\">｜12調連動・Parser直結<\/small><\/h1>\n  <p>Chart Parser v9と連携し、文法規則に沿った編集・コード再出力・親画面への返送を行う研究用エディタです。<\/p>\n<\/header>\n<main>\n<div class=\"grid\">\n<section>\n  <div class=\"card\">\n    <h2>1. 構文木JSONを読み込む<\/h2><p class=\"hint\">解析キー：<b id=\"editorKeyLabel\">C<\/b>（Parserからの連携時に自動設定） <select id=\"editorKeySelect\" onchange=\"editorSetKey(this.value)\" style=\"display:inline-block;width:auto\"><option>C<\/option><option>Db<\/option><option>D<\/option><option>Eb<\/option><option>E<\/option><option>F<\/option><option>F#<\/option><option>G<\/option><option>Ab<\/option><option>A<\/option><option>Bb<\/option><option>B<\/option><\/select><\/p>\n    <textarea id=\"jsonInput\"><\/textarea>\n    <div class=\"toolbar\">\n      <button onclick=\"loadJson()\">JSONを読み込む<\/button>\n      <button class=\"secondary\" onclick=\"loadExample('ii-v-i')\">例：完成II-V-I<\/button>\n      <button class=\"secondary\" onclick=\"loadExample('active')\">例：未確定あり<\/button>\n      <button class=\"secondary\" onclick=\"loadExample('broken')\">例：余分な?IC<\/button>\n      <button class=\"ghost\" onclick=\"document.getElementById('fileInput').click()\">JSONファイル選択<\/button>\n      <input id=\"fileInput\" type=\"file\" accept=\".json,.txt,application/json\" class=\"hidden\" onchange=\"readFile(event)\">\n    <\/div>\n    <p class=\"hint\">Parserの「最終候補木JSON」または「全ステップJSON」を読み込めます。JHT風の <code>{label, children}<\/code> 形式にも簡易対応します。<\/p>\n  <\/div>\n\n  <div class=\"card\">\n    <h2>2. 構文木ビュー<\/h2>\n    <div class=\"statusBar\">\n      <span id=\"grammarBadge\" class=\"badge\">未検証<\/span>\n      <button class=\"secondary\" onclick=\"validateAndRender()\">構文を検証<\/button>\n      <button class=\"warn\" onclick=\"safeRepairTree()\">文法に沿って安全修正<\/button>\n      <button class=\"ghost\" onclick=\"undo()\">元に戻す<\/button>\n      <button class=\"ghost\" onclick=\"redo()\">やり直す<\/button>\n    <\/div>\n    <div class=\"legend\">\n      <span class=\"legendLine\">確定枝<\/span>\n      <span class=\"legendLine dashed\">未確定枝・期待を含む枝<\/span>\n      <span class=\"legendChip\"><b class=\"expect\">?IC<\/b> = 未確定<\/span>\n      <span class=\"legendChip\"><b class=\"token\">G7<\/b> = コード<\/span>\n      <span class=\"legendChip\"><b class=\"cat\">VC<\/b> = カテゴリ<\/span>\n    <\/div>\n    <div id=\"treeVisual\" class=\"treeVisual\"><\/div>\n    <h3>テキスト表示<\/h3>\n    <div id=\"treePretty\" class=\"treePretty\"><\/div>\n    <div class=\"toolbar\">\n      <button class=\"ok\" onclick=\"downloadJson()\">編集後JSONを保存<\/button>\n      <button class=\"ok\" onclick=\"sendTreeBackToParser()\">編集結果をParserに返す ↗<\/button>\n      <button class=\"ok\" onclick=\"downloadTxt()\">コード列を保存<\/button>\n      <button class=\"secondary\" onclick=\"copyJson()\">JSONをコピー<\/button>\n    <\/div>\n  <\/div>\n\n  <div class=\"card\">\n    <h2>3. 構文検証結果<\/h2>\n    <div id=\"validationSummary\" class=\"notice\">JSONを読み込むと、文法規則・コード辞書との整合性を確認します。<\/div>\n    <ul id=\"issueList\" class=\"issueList\"><\/ul>\n  <\/div>\n\n  <div class=\"card\">\n    <h2>4. 出力<\/h2>\n    <div class=\"split\">\n      <div><h3>JSON<\/h3><pre id=\"jsonOutput\"><\/pre><\/div>\n      <div><h3>コード列<\/h3><pre id=\"leavesOutput\"><\/pre><\/div>\n    <\/div>\n  <\/div>\n<\/section>\n\n<aside>\n  <div class=\"card\">\n    <h2>選択中ノード<\/h2>\n    <div id=\"selectedInfo\" class=\"notice\">まだノードが選択されていません。<\/div>\n\n    <div id=\"candidateArea\" class=\"candidateBox\">\n      <b>この位置に入れられる候補<\/b>\n      <div id=\"requiredInfo\" class=\"small\"><\/div>\n      <div id=\"codeCandidates\" class=\"candidateList\"><\/div>\n      <div id=\"ruleCandidates\" class=\"candidateList\"><\/div>\n    <\/div>\n\n    <h3>コード候補で確定<\/h3><div class=\"sideRow\"><input id=\"manualChord\" placeholder=\"自由入力（例：Dm9, G13）\"><button class=\"secondary\" onclick=\"confirmCustomChord()\">入力コードを確定<\/button><\/div>\n    <select id=\"candidateChord\"><\/select>\n    <button onclick=\"confirmWithChord()\">選択コードで確定<\/button>\n\n    <h3>ノード編集<\/h3>\n    <div class=\"sideRow\"><label>カテゴリ<\/label><input id=\"editCat\" placeholder=\"IC / VC / IIC など\"><\/div>\n    <div class=\"sideRow\"><label>コード<\/label><input id=\"editToken\" placeholder=\"Cmaj7 など。内部ノードなら空\"><\/div>\n    <div class=\"sideRow\"><label>未確定<\/label><select id=\"editUndecided\"><option value=\"false\">false<\/option><option value=\"true\">true<\/option><\/select><\/div>\n    <div class=\"toolbar\">\n      <button onclick=\"applyEdit()\">変更を反映<\/button>\n      <button class=\"secondary\" onclick=\"addChild()\">子ノード追加<\/button>\n      <button class=\"danger\" onclick=\"deleteNode()\">削除<\/button>\n    <\/div>\n  <\/div>\n\n  <div class=\"card\">\n    <h2>分岐変換<\/h2>\n    <p class=\"small\">選択ノードのカテゴリを保ったまま、そのカテゴリで許可される文法規則へ変換します。既存の同カテゴリの子は可能な限り保持し、不足箇所は未確定ノードで補います。<\/p>\n    <select id=\"branchRuleSelect\"><\/select>\n    <button onclick=\"applyBranchRule()\">選択した規則へ変換<\/button>\n    <div id=\"branchPreview\" class=\"hint\"><\/div>\n  <\/div>\n\n  <div class=\"card\">\n    <h2>部分木テンプレート<\/h2>\n    <p class=\"small\">親から要求されるカテゴリとテンプレートの根カテゴリが一致するときだけ置換します。v1のような無条件置換による文法衝突を防ぎます。<\/p>\n    <button onclick=\"replaceTemplate('ii-v-i')\">II-V-I<\/button>\n    <button onclick=\"replaceTemplate('v-i')\">V-I<\/button>\n    <button onclick=\"replaceTemplate('tritone')\">裏コードV-I<\/button>\n    <button onclick=\"replaceTemplate('ii-v')\">II-V<\/button>\n    <button onclick=\"replaceTemplate('expect')\">未確定に戻す<\/button>\n  <\/div>\n\n  <div class=\"card\">\n    <h2>v2で整理した点<\/h2>\n    <div class=\"sourceBox\">\n      <b>分岐変換：<\/b> 同じ根カテゴリを保つため、親の要求と衝突しません。<br>\n      <b>部分木置換：<\/b> 親のスロットが要求するカテゴリと一致する場合だけ実行します。<br>\n      <b>安全修正：<\/b> 規則ラベルに対して余分な未確定ノードだけを除去し、不足スロットは <code>?<\/code> で補います。確定済みコードは勝手に削除しません。<br>\n      <b>表示：<\/b> Parser v6と同じく、確定枝は実線、未確定を含む枝は赤い点線です。\n    <\/div>\n  <\/div>\n\n  <div class=\"card\">\n    <h2>文法ルール・辞書<\/h2>\n    <table id=\"rulesTable\"><\/table>\n    <h3>選択カテゴリのコード辞書<\/h3>\n    <table id=\"selectedLexTable\"><\/table>\n  <\/div>\n<\/aside>\n<\/div>\n<\/main>\n\n<script>\nconst RULES = [\n  {lhs:'S', rhs:['IC'], label:'開始', source:'Ogura Table 1'},\n  {lhs:'IC', rhs:['IC','IC'], label:'延長', source:'Ogura Table 1 / JHT strong prolongation'},\n  {lhs:'IC', rhs:['VC','IC'], label:'V→Iへの期待', source:'Ogura Table 1 / preparation'},\n  {lhs:'IC', rhs:['VGb','IC'], label:'裏コードV→I', source:'編曲用拡張ルール（Editor v2）'},\n  {lhs:'VC', rhs:['IIC','VC'], label:'II→Vへの期待', source:'Ogura Table 1 / preparation'},\n  {lhs:'VC', rhs:['VG','VC'], label:'副次的VからV', source:'Ogura Table 1'},\n  {lhs:'VC', rhs:['VGb'], label:'代理', source:'Ogura Table 2を簡略化'},\n  {lhs:'VD', rhs:['IID','VD'], label:'II→V（D key）', source:'Ogura Table 2'},\n  {lhs:'VG', rhs:['IIG','VG'], label:'II→V（G key）', source:'Ogura Table 2'},\n  {lhs:'VG', rhs:['VD','VG'], label:'V of V', source:'Ogura Table 2'},\n  {lhs:'VGb', rhs:['IIGb','VGb'], label:'II→V（Gb key）', source:'Ogura Table 2'},\n  {lhs:'IF', rhs:['IIF','VF'], label:'II→V（F key）', source:'Parser v6と同一'},\n  {lhs:'IF', rhs:['VF','IF'], label:'V→I（F key）', source:'Parser v6と同一'}\n];\n\nconst LEXICON_ENTRIES = [\n  {token:'Cmaj7', cats:['IC']},{token:'CM7', cats:['IC']},{token:'C', cats:['IC']},{token:'C6', cats:['IC']},\n  {token:'Dmin7', cats:['IIC']},{token:'Dm7', cats:['IIC']},{token:'D-7', cats:['IIC']},\n  {token:'G7', cats:['VC']},{token:'Gsus7', cats:['VC']},\n  {token:'D7', cats:['VG']},\n  {token:'Emin7', cats:['IID']},{token:'Em7', cats:['IID']},{token:'E-7', cats:['IID']},\n  {token:'A7', cats:['VD']},\n  {token:'Amin7', cats:['IIG']},{token:'Am7', cats:['IIG']},{token:'A-7', cats:['IIG']},\n  {token:'Abmin7', cats:['IIGb']},{token:'Abm7', cats:['IIGb']},{token:'Ab-7', cats:['IIGb']},\n  {token:'Db7', cats:['VGb']},\n  {token:'Fmaj7', cats:['IF']},{token:'FM7', cats:['IF']},{token:'F', cats:['IF']},\n  {token:'Gmin7', cats:['IIF']},{token:'Gm7', cats:['IIF']},{token:'G-7', cats:['IIF']},\n  {token:'C7', cats:['VF']},{token:'Bb7', cats:['IVC']},\n  {token:'Bmin7b5', cats:['VIIC']},{token:'Bø7', cats:['VIIC']},{token:'B%7', cats:['VIIC']},\n  {token:'E7', cats:['VIIID']}\n];\n\nconst LEXICON = {};\nconst CAT_TO_TOKENS = {};\nfunction editorRebuildLexicon(){\n  for(const k of Object.keys(LEXICON))delete LEXICON[k];\n  for(const k of Object.keys(CAT_TO_TOKENS))delete CAT_TO_TOKENS[k];\n  for(const e of LEXICON_ENTRIES){\n    const t=kTransposeChord(e.token,EDITOR_KEY),cats=editorChordCategories(t);\n    if(!cats.length)continue;\n    LEXICON[normChord(t)]=cats;\n    for(const cat of cats){ if(!CAT_TO_TOKENS[cat])CAT_TO_TOKENS[cat]=[];if(!CAT_TO_TOKENS[cat].includes(t))CAT_TO_TOKENS[cat].push(t); }\n  }\n  for(const k of Object.keys(CAT_TO_TOKENS)){\n    const arr=CAT_TO_TOKENS[k].slice(0,5);\n    for(const token of arr){let c=kParseChordSymbol(token); if(c.family==='maj'){for(const q of ['maj9','6','add9']){const s=c.root+q;if(!CAT_TO_TOKENS[k].includes(s))CAT_TO_TOKENS[k].push(s);}}\n    if(c.family==='min'){const s=c.root+'m9';if(!CAT_TO_TOKENS[k].includes(s))CAT_TO_TOKENS[k].push(s);}\n    if(c.family==='dom'){for(const q of ['9','13']){const s=c.root+q;if(!CAT_TO_TOKENS[k].includes(s))CAT_TO_TOKENS[k].push(s);}}\n    }\n  }\n}\n\n\nconst examples = {\n  'ii-v-i': {cat:'IC', rule:ruleMeta(RULES[2]), children:[\n    {cat:'VC', rule:ruleMeta(RULES[4]), children:[{cat:'IIC',token:'Dmin7'},{cat:'VC',token:'G7'}]},\n    {cat:'IC',token:'Cmaj7'}\n  ]},\n  'active': {cat:'IC', rule:ruleMeta(RULES[2]), children:[\n    {cat:'VC', rule:ruleMeta(RULES[4]), children:[{cat:'IIC',token:'Dmin7'},{cat:'VC',token:'G7'}]},\n    {cat:'IC',undecided:true}\n  ]},\n  'broken': {cat:'IC', rule:ruleMeta(RULES[2]), children:[\n    {cat:'VC', rule:ruleMeta(RULES[4]), children:[{cat:'IIC',token:'Dmin7'},{cat:'VC',token:'G7'},{cat:'IC',undecided:true}]},\n    {cat:'IC',token:'Cmaj7'}\n  ]}\n};\n\nlet tree = null;\nlet selectedPath = [];\nlet validationIssues = [];\nlet undoStack = [];\nlet redoStack = [];\n\nfunction normChord(s){ return String(s||'').trim().replace(/♭/g,'B').replace(/♯/g,'#').replace(/Δ/g,'MAJ').replace(/−/g,'-').replace(/ø/g,'Ø').toUpperCase(); }\n/* 共通: 12調のコード根音と簡易和声機能認識。全和音・全機能を保証するものではない。 */\nconst K_NOTE_PC={C:0,'B#':0,DB:1,'C#':1,D:2,EB:3,'D#':3,E:4,FB:4,F:5,'E#':5,GB:6,'F#':6,G:7,AB:8,'G#':8,A:9,BB:10,'A#':10,B:11,CB:11};\nconst K_NAMES_FLAT=['C','Db','D','Eb','E','F','Gb','G','Ab','A','Bb','B'];\nconst K_NAMES_SHARP=['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];\nfunction kCanonicalizeChord(raw){return String(raw||'').trim().replace(/♭/g,'b').replace(/♯/g,'#').replace(/−/g,'-').replace(/Δ/g,'maj').replace(/ø/g,'ø').replace(/º/g,'°').replace(/／/g,'/');}\nfunction kParseChordSymbol(raw){\n  const s=kCanonicalizeChord(raw);\n  if(/^(N\\.?C\\.?|NO\\s*CHORD)$/i.test(s))return {recognized:true,root:null,family:'none',suffix:'',bass:'',reason:'休符・無和音'};\n  const a=s.match(/^([A-Ga-g])((?:bb|##|b|#)?)([^/]*)?(?:\\/(.+))?$/);\n  if(!a)return {recognized:false,reason:'コード表記を読み取れません'};\n  const root=(a[1].toUpperCase()+(a[2]||'')).toUpperCase(), pc=K_NOTE_PC[root];\n  if(pc===undefined)return {recognized:false,reason:'根音を読み取れません'};\n  const q=(a[3]||'').trim(),lower=q.toLowerCase(),bass=a[4]||'';\n  let family='unsupported';\n  if(/^(m7b5|min7b5|-7b5|ø|%)/i.test(q))family='halfdim';\n  else if(/^(dim|°|o7)/i.test(q))family='dim';\n  else if(/^(aug|\\+5?|7#5)/i.test(q))family='aug';\n  else if(/^(min|m(?!aj)|-)/.test(q))family='min';\n  else if(/^(maj|M(?:7|9|11|13)|\\^)/.test(q))family='maj';\n  else if(/^(7|9|11|13)/.test(q))family='dom';\n  else if(/^sus/i.test(q))family='sus';\n  else if(q===''||/^(6|69|6\\/9|add|2|4)/i.test(q))family='maj';\n  // 記号に含まれる大小文字が品質に影響する（m7とM7は別）。\n  if(/^7sus/i.test(q))family='dom';\n  return {recognized:true,root:a[1].toUpperCase()+(a[2]||''),rootPc:pc,family,suffix:q,bass};\n}\nfunction kRoleCategories(raw,key='C'){\n  const c=kParseChordSymbol(raw);if(!c.recognized||c.family==='none')return [];\n  const keyPc=K_NOTE_PC[String(key).toUpperCase()];if(keyPc===undefined)return [];\n  const degree=(c.rootPc-keyPc+12)%12;\n  const roles={\n    maj:{0:['IC'],5:['IF']},\n    min:{2:['IIC'],4:['IID'],9:['IIG'],8:['IIGb'],7:['IIF']},\n    dom:{7:['VC'],2:['VG'],9:['VD'],1:['VGb'],0:['VF'],10:['IVC'],4:['VIIID']},\n    halfdim:{11:['VIIC']}\n  };\n  return (roles[c.family]&&roles[c.family][degree])||[];\n}\nfunction kTransposeChord(raw,key='C'){\n  const c=kParseChordSymbol(raw);if(!c.recognized||c.rootPc===undefined)return raw;\n  const offset=K_NOTE_PC[String(key).toUpperCase()]||0;\n  const names=(String(key).includes('#')||['D','E','G','A','B'].includes(String(key)))?K_NAMES_SHARP:K_NAMES_FLAT;\n  const bassMatch=c.bass.match(/^([A-Ga-g])((?:bb|##|b|#)?)(.*)$/);\n  let bass='';if(bassMatch){const pc=K_NOTE_PC[(bassMatch[1].toUpperCase()+(bassMatch[2]||'')).toUpperCase()];bass='/'+(pc===undefined?c.bass:names[(pc+offset)%12]+bassMatch[3]);}\n  return names[(c.rootPc+offset)%12]+c.suffix+bass;\n}\nfunction kStatusChord(raw,key='C'){\n  const c=kParseChordSymbol(raw),cats=kRoleCategories(raw,key);\n  return {symbol:raw,recognized:c.recognized,family:c.family||'unknown',cats,reason:!c.recognized?c.reason:cats.length?'文法カテゴリに対応':'表記は認識可能だが現行CFGに役割がない'};\n}\n\nlet EDITOR_KEY='C';\nfunction editorChordCategories(token){return kRoleCategories(token,EDITOR_KEY);}\nfunction editorTransposeTree(t){const o=clone(t);(function walk(n){if(n.token)n.token=kTransposeChord(n.token,EDITOR_KEY);if(n.children)n.children.forEach(walk);})(o);return o;}\nfunction editorSetKey(key){EDITOR_KEY=key||'C';document.getElementById('editorKeyLabel').textContent=EDITOR_KEY;document.getElementById('editorKeySelect').value=EDITOR_KEY;editorRebuildLexicon();if(tree)render();}\n\nfunction clone(x){ return JSON.parse(JSON.stringify(x)); }\nfunction escapeHtml(s){ return String(s??'').replace(/[&<>\"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',\"'\":'&#39;'}[c])); }\nfunction ruleMeta(r){ return {text:`${r.lhs} → ${r.rhs.join(' ')}`,label:r.label,source:r.source}; }\nfunction ruleDisplay(rule){ if(!rule) return ''; if(typeof rule==='string') return rule; return rule.label || rule.text || ''; }\nfunction ruleText(rule){ if(!rule) return ''; if(typeof rule==='string') return rule; return rule.text || ''; }\nfunction pathKey(path){ return path.join('.'); }\nfunction pathFromKey(key){ return key===''?[]:key.split('.').map(Number); }\nfunction pathLabel(path){ return path.length ? 'root > '+path.map(i=>i+1).join(' > ') : 'root'; }\nfunction isUndecided(n){ return !!(n&&n.undecided); }\nfunction termHasUndecided(n){ if(!n) return false; if(isUndecided(n)) return true; return !!(n.children&&n.children.some(termHasUndecided)); }\n\nfunction findRuleByMeta(node){\n  if(!node) return null;\n  const rt=ruleText(node.rule), rl=ruleDisplay(node.rule);\n  let r=RULES.find(x=>rt===`${x.lhs} → ${x.rhs.join(' ')}`);\n  if(!r&&rl) r=RULES.find(x=>x.lhs===node.cat&&x.label===rl);\n  return r||null;\n}\nfunction findExactRule(node){\n  if(!node||!Array.isArray(node.children)) return null;\n  const cats=node.children.map(ch=>ch.cat);\n  return RULES.find(r=>r.lhs===node.cat&&r.rhs.length===cats.length&&r.rhs.every((c,i)=>c===cats[i]))||null;\n}\nfunction effectiveRule(node){ return findRuleByMeta(node)||findExactRule(node); }\n\nfunction normalizeLoaded(obj){\n  if(Array.isArray(obj)) return obj[0]||null;\n  if(obj&&obj.tree) return obj.tree;\n  if(obj&&obj.finalTree) return obj.finalTree;\n  if(obj&&obj.global&&Array.isArray(obj.global)) return obj.global[0]||null;\n  if(obj&&obj.steps&&Array.isArray(obj.steps)&&obj.steps.length){ const last=obj.steps[obj.steps.length-1]; if(last.global&&last.global.length) return last.global[0]; }\n  return obj;\n}\nfunction convertTree(t){\n  if(!t||typeof t!=='object') return null;\n  const out={};\n  let raw=t.cat||t.label||t.name||'NODE';\n  if(String(raw).startsWith('?')){ out.cat=String(raw).slice(1); out.undecided=true; }\n  else if(!t.cat&&t.label&&(!t.children||!t.children.length)&&editorChordCategories(t.label)){ out.cat=editorChordCategories(t.label)[0]; out.token=t.label; }\n  else out.cat=raw;\n  if(t.token) out.token=t.token;\n  if(t.undecided) out.undecided=true;\n  if(t.rule) out.rule=clone(t.rule);\n  if(Array.isArray(t.children)&&t.children.length) out.children=t.children.map(convertTree).filter(Boolean);\n  return out;\n}\nfunction loadExample(name){ tree=editorTransposeTree(examples[name]); selectedPath=[]; resetHistory(); document.getElementById('jsonInput').value=JSON.stringify(tree,null,2); render(); }\nfunction loadJson(){\n  try{ const obj=JSON.parse(document.getElementById('jsonInput').value); const t=convertTree(normalizeLoaded(obj)); if(!t||!t.cat) throw new Error('構文木オブジェクトが見つかりません'); tree=t; selectedPath=[]; resetHistory(); render(); }\n  catch(e){ alert('JSONを読み込めませんでした: '+e.message); }\n}\nfunction readFile(ev){ const file=ev.target.files[0]; if(!file)return; const rd=new FileReader(); rd.onload=()=>{document.getElementById('jsonInput').value=rd.result;loadJson();}; rd.readAsText(file); }\n\nfunction getNode(path=selectedPath){ let n=tree; for(const i of path){ if(!n||!n.children||!n.children[i]) return null; n=n.children[i]; } return n; }\nfunction getParent(path=selectedPath){ return path.length?getNode(path.slice(0,-1)):null; }\nfunction saveState(){ if(!tree)return; undoStack.push(JSON.stringify(tree)); if(undoStack.length>50)undoStack.shift(); redoStack=[]; }\nfunction resetHistory(){ undoStack=[]; redoStack=[]; }\nfunction undo(){ if(!undoStack.length)return; redoStack.push(JSON.stringify(tree)); tree=JSON.parse(undoStack.pop()); if(!getNode(selectedPath))selectedPath=[]; render(); }\nfunction redo(){ if(!redoStack.length)return; undoStack.push(JSON.stringify(tree)); tree=JSON.parse(redoStack.pop()); if(!getNode(selectedPath))selectedPath=[]; render(); }\n\nfunction requiredSlotInfo(path=selectedPath){\n  const node=getNode(path);\n  if(!path.length) return {valid:true,cat:node?.cat||null,root:true,reason:'ルートノード'};\n  const p=getParent(path), index=path[path.length-1], r=effectiveRule(p);\n  if(!r) return {valid:null,cat:node?.cat||null,root:false,reason:'親ノードの分岐規則が確定していないため、要求カテゴリを判定できません。'};\n  if(index>=r.rhs.length) return {valid:false,cat:null,root:false,reason:`親の規則 ${r.lhs} → ${r.rhs.join(' ')} には第${index+1}スロットがありません。このノードには何も入れず、削除する必要があります。`};\n  return {valid:true,cat:r.rhs[index],root:false,reason:`親の規則 ${r.lhs} → ${r.rhs.join(' ')} の第${index+1}スロット`};\n}\nfunction requiredCategory(path=selectedPath){ return requiredSlotInfo(path).cat; }\nfunction getIssuesAtOrBelow(path){ const key=pathKey(path); return validationIssues.filter(i=>i.pathKey===key||i.pathKey.startsWith(key+'.')); }\nfunction hasIssueAt(path){ const key=pathKey(path); return validationIssues.some(i=>i.pathKey===key&&i.severity==='error'); }\n\nfunction validateTree(){\n  const issues=[];\n  function add(path,severity,message){ issues.push({path:path.slice(),pathKey:pathKey(path),severity,message}); }\n  function walk(n,path){\n    if(!n||typeof n!=='object'){ add(path,'error','ノードが不正です。'); return; }\n    if(!n.cat) add(path,'error','カテゴリがありません。');\n    if(n.undecided){\n      if(n.token) add(path,'error','未確定ノードにコードが入っています。');\n      if(n.children&&n.children.length) add(path,'error','未確定ノードに子ノードがあります。');\n      return;\n    }\n    if(n.token){\n      if(n.children&&n.children.length) add(path,'error','コード葉に子ノードがあります。');\n      const cats=editorChordCategories(n.token);\n      if(!cats) add(path,'warn',`コード ${n.token} は辞書に未登録です。`);\n      else if(!cats.includes(n.cat)) add(path,'error',`${n.token} は辞書上 ${n.cat} ではありません（候補: ${cats.join(', ')}）。`);\n      return;\n    }\n    if(n.children&&n.children.length){\n      const exact=findExactRule(n); const explicit=findRuleByMeta(n);\n      if(explicit){\n        const actual=n.children.map(c=>c.cat);\n        if(explicit.rhs.length!==actual.length||!explicit.rhs.every((c,i)=>c===actual[i])) add(path,'error',`規則 ${explicit.lhs} → ${explicit.rhs.join(' ')} と子ノード [${actual.join(', ')}] が一致しません。`);\n      }else if(!exact){\n        const allowed=RULES.filter(r=>r.lhs===n.cat).map(r=>`${r.lhs}→${r.rhs.join(' ')}`).join(' / ');\n        add(path,'error',`子ノードの並び [${n.children.map(c=>c.cat).join(', ')}] に一致する規則がありません。${allowed?` 許可: ${allowed}`:' このカテゴリの分岐規則は未登録です。'}`);\n      }else if(!n.rule){ add(path,'warn',`分岐は ${exact.lhs} → ${exact.rhs.join(' ')} に一致しますが、規則情報が付いていません。`); }\n      n.children.forEach((c,i)=>walk(c,path.concat(i)));\n      return;\n    }\n    add(path,'warn','コード・子ノード・未確定フラグのいずれもない空ノードです。');\n  }\n  if(tree) walk(tree,[]);\n  validationIssues=issues;\n  return issues;\n}\n\nfunction visualLabel(n,path){\n  const selected=pathKey(path)===pathKey(selectedPath)?' selected':'';\n  const invalid=hasIssueAt(path)?' invalidNode':'';\n  let cls='catNode',text=escapeHtml(n.cat||'NODE');\n  if(n.undecided){cls='expectNode';text='?'+escapeHtml(n.cat||'NODE');}\n  else if(n.token){cls='tokenNode';text=`${escapeHtml(n.cat||'NODE')}: ${escapeHtml(n.token)}`;}\n  const rule=ruleDisplay(n.rule);\n  return `<button class=\"vNode ${cls}${selected}${invalid}\" data-path=\"${pathKey(path)}\">${text}<\/button>${rule?`<span class=\"vRule\">[${escapeHtml(rule)}]<\/span>`:''}`;\n}\nfunction renderVisual(n,path=[]){\n  let html=`<div class=\"vItem\">${visualLabel(n,path)}<\/div>`;\n  const children=n.children||[];\n  if(children.length){ html+='<div class=\"vChildren\">'; children.forEach((ch,i)=>{const cls=['vChild'];if(i===children.length-1)cls.push('last');if(termHasUndecided(ch))cls.push('unconfirmed');html+=`<div class=\"${cls.join(' ')}\">${renderVisual(ch,path.concat(i))}<\/div>`;}); html+='<\/div>'; }\n  return html;\n}\nfunction prettyLabel(n){ if(n.undecided)return `?${n.cat}`; if(n.token)return `${n.cat}: ${n.token}`; return `${n.cat}${ruleDisplay(n.rule)?` [${ruleDisplay(n.rule)}]`:''}`; }\nfunction prettyTree(n){ const lines=[prettyLabel(n)]; function rec(x,prefix){const cs=x.children||[];cs.forEach((c,i)=>{const last=i===cs.length-1;lines.push(prefix+(last?'└── ':'├── ')+prettyLabel(c));if(c.children&&c.children.length)rec(c,prefix+(last?'    ':'│   '));});}rec(n,'');return lines.join('\\n'); }\nfunction colorizeTreeText(s){\n  return escapeHtml(s).replace(/(├──|└──|│   |    )/g,'<span class=\"branch\">$1<\/span>')\n    .replace(/\\?([A-Za-z0-9♭]+)/g,'<span class=\"expect\">?$1<\/span>')\n    .replace(/\\[(.*?)\\]/g,'<span class=\"ruleText\">[$1]<\/span>')\n    .replace(/: ([^\\n]+)/g,': <span class=\"token\">$1<\/span>')\n    .replace(/\\b(S|IC|VC|IIC|VG|VD|IID|IIG|VGb|IIGb|IF|IIF|VF|IVC|VIIC|VIIID)\\b/g,'<span class=\"cat\">$1<\/span>');\n}\n\nfunction render(){\n  if(!tree){ document.getElementById('treeVisual').innerHTML='<div class=\"hint\">JSONを読み込むか例を選んでください。<\/div>'; return; }\n  validateTree();\n  document.getElementById('treeVisual').innerHTML=renderVisual(tree);\n  document.getElementById('treePretty').innerHTML=colorizeTreeText(prettyTree(tree));\n  document.getElementById('jsonOutput').textContent=JSON.stringify(tree,null,2);\n  document.getElementById('leavesOutput').textContent=collectLeaves(tree).join(' ');\n  updateValidationPanel(); updateSelectedPanel();\n}\nfunction validateAndRender(){ render(); }\ndocument.getElementById('treeVisual').addEventListener('click',e=>{const b=e.target.closest('[data-path]');if(!b)return;selectedPath=pathFromKey(b.dataset.path);render();});\n\nfunction updateValidationPanel(){\n  const errors=validationIssues.filter(i=>i.severity==='error').length, warns=validationIssues.filter(i=>i.severity==='warn').length;\n  const badge=document.getElementById('grammarBadge'), summary=document.getElementById('validationSummary'), list=document.getElementById('issueList');\n  if(errors===0&&warns===0){badge.className='badge ok';badge.textContent='文法整合：OK';summary.className='notice';summary.textContent='文法規則とコード辞書に対する不整合は見つかりませんでした。';}\n  else if(errors===0){badge.className='badge warn';badge.textContent=`警告 ${warns}件`;summary.className='notice warningBox';summary.textContent='致命的な文法衝突はありませんが、確認した方がよい項目があります。';}\n  else{badge.className='badge error';badge.textContent=`エラー ${errors}件`;summary.className='notice errorBox';summary.textContent='文法規則と一致しない分岐があります。対象ノードを選ぶか「安全修正」を試してください。';}\n  list.innerHTML=validationIssues.length?validationIssues.map(i=>`<li class=\"${i.severity}\"><button class=\"ghost\" style=\"padding:3px 7px;margin:0 5px 0 0\" onclick=\"selectPathFromIssue('${i.pathKey}')\">${escapeHtml(pathLabel(i.path))}<\/button>${escapeHtml(i.message)}<\/li>`).join(''):'<li>問題はありません。<\/li>';\n}\nfunction selectPathFromIssue(key){selectedPath=pathFromKey(key);render();}\n\nfunction updateSelectedPanel(){\n  const n=getNode(); const info=document.getElementById('selectedInfo');\n  if(!n){info.textContent='まだノードが選択されていません。';return;}\n  const slotInfo=requiredSlotInfo(); const req=slotInfo.cat; const parent=getParent(); const slot=selectedPath.length?selectedPath[selectedPath.length-1]+1:null;\n  if(slotInfo.valid===false){\n    info.className='notice errorBox';\n    info.innerHTML=`選択: <b>${escapeHtml(pathLabel(selectedPath))}<\/b><br>現在: <b>${escapeHtml(prettyLabel(n))}<\/b><br><b>規則外の余分なノードです。<\/b><br>${escapeHtml(slotInfo.reason)}`;\n  }else{\n    info.className='notice';\n    info.innerHTML=`選択: <b>${escapeHtml(pathLabel(selectedPath))}<\/b><br>現在: <b>${escapeHtml(prettyLabel(n))}<\/b><br>${parent?`親の第${slot}スロットが要求: <b>${escapeHtml(req||'判定不能')}<\/b>`:'ルートノード'}<br><span class=\"small\">${escapeHtml(slotInfo.reason)}<\/span>`;\n  }\n  document.getElementById('editCat').value=n.cat||''; document.getElementById('editToken').value=n.token||''; document.getElementById('editUndecided').value=n.undecided?'true':'false';\n  updateCandidates(slotInfo.valid===false?null:(req||n.cat),slotInfo); updateBranchRules(slotInfo.valid===false?null:n.cat); updateSelectedLexTable(slotInfo.valid===false?null:(req||n.cat));\n}\nfunction updateCandidates(cat,slotInfo=requiredSlotInfo()){\n  if(slotInfo.valid===false){\n    document.getElementById('requiredInfo').innerHTML=`<b class=\"expect\">この位置には何も入りません。<\/b><br>${escapeHtml(slotInfo.reason)}`;\n    document.getElementById('codeCandidates').innerHTML='<span class=\"small\">候補なし（ノードを削除してください）<\/span>';\n    document.getElementById('ruleCandidates').innerHTML='<span class=\"small\">分岐候補なし<\/span>';\n    document.getElementById('candidateChord').innerHTML='<option value=\"\">規則外の位置<\/option>';\n    return;\n  }\n  const tokens=CAT_TO_TOKENS[cat]||[]; const rules=RULES.filter(r=>r.lhs===cat);\n  document.getElementById('requiredInfo').innerHTML=`要求カテゴリ: <b>${escapeHtml(cat||'不明')}<\/b><br>コード葉として確定するか、同じカテゴリを根とする分岐規則を適用できます。`;\n  document.getElementById('codeCandidates').innerHTML=tokens.length?tokens.map(t=>`<span class=\"candidate\">${escapeHtml(t)}<\/span>`).join(''):'<span class=\"small\">コード辞書に候補がありません。<\/span>';\n  document.getElementById('ruleCandidates').innerHTML=rules.length?rules.map(r=>`<span class=\"candidate\">${escapeHtml(r.lhs+' → '+r.rhs.join(' '))}<\/span>`).join(''):'<span class=\"small\">分岐規則はありません。<\/span>';\n  const sel=document.getElementById('candidateChord'); sel.innerHTML=tokens.length?tokens.map(t=>`<option value=\"${escapeHtml(t)}\">${escapeHtml(t)}<\/option>`).join(''):'<option value=\"\">候補なし<\/option>';\n}\nfunction updateBranchRules(cat){\n  const rs=cat?RULES.filter(r=>r.lhs===cat):[], sel=document.getElementById('branchRuleSelect');\n  sel.innerHTML=rs.length?rs.map((r)=>`<option value=\"${RULES.indexOf(r)}\">${escapeHtml(r.lhs+' → '+r.rhs.join(' ')+' ['+r.label+']')}<\/option>`).join(''):'<option value=\"\">このカテゴリの規則なし<\/option>';\n  document.getElementById('branchPreview').textContent=rs.length?'変換後、不足する子ノードは ?カテゴリ として作成されます。':'選択ノードは文法規則で分岐できません。';\n}\nfunction updateSelectedLexTable(cat){\n  const ts=cat?(CAT_TO_TOKENS[cat]||[]):[]; document.getElementById('selectedLexTable').innerHTML='<tr><th>カテゴリ<\/th><th>入力可能なコード表記<\/th><\/tr>'+`<tr><td>${escapeHtml(cat||'-')}<\/td><td>${ts.length?ts.map(escapeHtml).join(', '):'未登録'}<\/td><\/tr>`;\n}\n\nfunction applyEdit(){\n  const n=getNode();if(!n)return alert('ノードを選択してください');saveState();\n  n.cat=document.getElementById('editCat').value.trim()||'NODE'; const tok=document.getElementById('editToken').value.trim(); const undec=document.getElementById('editUndecided').value==='true';\n  n.undecided=undec;\n  if(undec){delete n.token;delete n.children;delete n.rule;}\n  else{if(tok){n.token=tok;delete n.children;delete n.rule;}else delete n.token;}\n  render();\n}\nfunction confirmWithChord(){\n  const n=getNode(); const token=document.getElementById('candidateChord').value;if(!n||!token)return alert('コード候補がありません');\n  const slotInfo=requiredSlotInfo(); if(slotInfo.valid===false)return alert(slotInfo.reason); const req=slotInfo.cat; const cats=editorChordCategories(token); if(req&&!cats.includes(req))return alert(`${token} は要求カテゴリ ${req} に対応していません。`);\n  if(n.children&&n.children.length&&!confirm('選択ノードの分岐をコード葉に置き換えます。よいですか？'))return;\n  saveState(); n.cat=req||cats[0]||n.cat;n.token=token;delete n.children;delete n.rule;delete n.undecided;render();\n}\nfunction addChild(){\n  const n=getNode();if(!n)return alert('ノードを選択してください');saveState();if(n.undecided)delete n.undecided;if(n.token)delete n.token;if(!n.children)n.children=[];n.children.push({cat:'IC',undecided:true});selectedPath=selectedPath.concat(n.children.length-1);render();\n}\nfunction deleteNode(){\n  if(!tree)return;if(!selectedPath.length){if(confirm('ルートを削除しますか？')){saveState();tree=null;selectedPath=[];render();}return;}\n  saveState();const p=getParent(),idx=selectedPath[selectedPath.length-1];p.children.splice(idx,1);if(!p.children.length)delete p.children;selectedPath=selectedPath.slice(0,-1);render();\n}\n\nfunction convertNodeToRule(node,rule,allowDropConfirmed=false){\n  const old=Array.isArray(node.children)?node.children:[]; const used=new Set(); const next=[];\n  for(let i=0;i<rule.rhs.length;i++){\n    const cat=rule.rhs[i]; let idx=-1;\n    if(old[i]&&old[i].cat===cat&&!used.has(i)) idx=i;\n    if(idx<0) idx=old.findIndex((c,j)=>!used.has(j)&&c.cat===cat);\n    if(idx>=0){used.add(idx);next.push(old[idx]);} else next.push({cat,undecided:true});\n  }\n  const dropped=old.filter((_,i)=>!used.has(i)); const confirmedDropped=dropped.filter(x=>!x.undecided);\n  if(confirmedDropped.length&&!allowDropConfirmed) return {ok:false,confirmedDropped,dropped};\n  node.cat=rule.lhs;node.children=next;node.rule=ruleMeta(rule);delete node.token;delete node.undecided;return {ok:true,dropped};\n}\nfunction applyBranchRule(){\n  const n=getNode();const raw=document.getElementById('branchRuleSelect').value;if(raw==='')return alert('適用できる規則がありません。');const idx=Number(raw);const r=RULES[idx];if(!n||!r)return alert('適用できる規則がありません。');\n  const slotInfo=requiredSlotInfo();if(slotInfo.valid===false)return alert(slotInfo.reason);const req=slotInfo.cat;if(req&&r.lhs!==req)return alert(`この位置は ${req} を要求しています。${r.lhs} を根とする分岐には変換できません。`);\n  const preview=clone(n);let test=convertNodeToRule(preview,r,false);\n  if(!test.ok){if(!confirm(`変換すると確定済みの子ノード ${test.confirmedDropped.map(prettyLabel).join(', ')} が外れます。削除して変換しますか？`))return;}\n  saveState();convertNodeToRule(n,r,true);render();\n}\n\nconst TEMPLATES={\n  'ii-v-i':()=>clone(examples['ii-v-i']),\n  'v-i':()=>({cat:'IC',rule:ruleMeta(RULES[2]),children:[{cat:'VC',token:'G7'},{cat:'IC',token:'Cmaj7'}]}),\n  'tritone':()=>({cat:'IC',rule:ruleMeta(RULES[3]),children:[{cat:'VGb',token:'Db7'},{cat:'IC',token:'Cmaj7'}]}),\n  'ii-v':()=>({cat:'VC',rule:ruleMeta(RULES[4]),children:[{cat:'IIC',token:'Dmin7'},{cat:'VC',token:'G7'}]}),\n  'expect':()=>({cat:requiredCategory()||getNode()?.cat||'IC',undecided:true})\n};\nfunction replaceTemplate(type){\n  const n=getNode();if(!n)return alert('ノードを選択してください');const slotInfo=requiredSlotInfo();if(slotInfo.valid===false)return alert(slotInfo.reason);const repl=editorTransposeTree(TEMPLATES[type]());const req=slotInfo.cat;\n  if(req&&repl.cat!==req)return alert(`この位置は ${req} を要求していますが、選んだテンプレートの根は ${repl.cat} です。分岐変換との衝突を避けるため置換しません。`);\n  if((n.token||n.children?.length)&&!confirm(`選択中の「${prettyLabel(n)}」をテンプレートに置換しますか？`))return;\n  saveState();if(!selectedPath.length)tree=repl;else{const p=getParent();p.children[selectedPath[selectedPath.length-1]]=repl;}render();\n}\n\nfunction safeRepairTree(){\n  if(!tree)return;saveState();let changed=0,skipped=0;\n  function rec(n){\n    const explicit=findRuleByMeta(n);\n    if(explicit&&n.children){\n      const old=clone(n.children); const result=convertNodeToRule(n,explicit,false);\n      if(result.ok){ if(JSON.stringify(old)!==JSON.stringify(n.children))changed++; }\n      else{ n.children=old; skipped++; }\n    }else if(n.children){ const exact=findExactRule(n);if(exact&&!n.rule){n.rule=ruleMeta(exact);changed++;} }\n    if(n.children)n.children.forEach(rec);\n  }\n  rec(tree);render();\n  if(skipped)alert(`安全修正: ${changed}か所を修正しました。確定済みコードを削除する必要がある ${skipped}か所は変更していません。`);\n  else alert(`安全修正: ${changed}か所を修正しました。`);\n}\n\nfunction collectLeaves(n,out=[]){if(!n)return out;if(n.token)out.push(n.token);if(n.children)n.children.forEach(c=>collectLeaves(c,out));return out;}\nfunction download(filename,text,type='text/plain'){const blob=new Blob([text],{type});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=filename;document.body.appendChild(a);a.click();a.remove();URL.revokeObjectURL(a.href);}\nfunction downloadJson(){if(!tree)return alert('構文木がありません');download('edited_tree_v2.json',JSON.stringify(tree,null,2),'application/json');}\nfunction downloadTxt(){if(!tree)return alert('構文木がありません');download('edited_chords_v2.txt',collectLeaves(tree).join(' '));}\nasync function copyJson(){if(!tree)return;try{await navigator.clipboard.writeText(JSON.stringify(tree,null,2));alert('JSONをコピーしました。');}catch(e){alert('コピーできませんでした。');}}\nfunction renderRulesTable(){document.getElementById('rulesTable').innerHTML='<tr><th>規則<\/th><th>意味<\/th><\/tr>'+RULES.map(r=>`<tr><td>${escapeHtml(r.lhs+' → '+r.rhs.join(' '))}<\/td><td>${escapeHtml(r.label)}<\/td><\/tr>`).join('');}\n\nfunction confirmCustomChord(){\n  const token=document.getElementById('manualChord').value.trim();if(!token)return alert('コードを入力してください');\n  const select=document.getElementById('candidateChord');\n  select.add(new Option(token,token));select.value=token;confirmWithChord();\n}\nfunction sendTreeBackToParser(){\n  if(!tree)return alert('構文木がありません');\n  const issues=validateTree();const errors=issues.filter(i=>i.severity==='error');\n  if(errors.length){alert('構文エラーが '+errors.length+' 件あります。修正してから返送してください。');return;}\n  if(window.parent===window){alert('単体版です。JSONを保存し、Parserで読み込んでください。');return;}\n  window.parent.postMessage({type:'chart-editor:export',tree:clone(tree),key:EDITOR_KEY,issues},'*');\n}\nwindow.addEventListener('message',event=>{\n  if(event.source!==window.parent)return;\n  const msg=event.data;if(!msg||msg.type!=='chart-editor:import')return;\n  editorSetKey(msg.key||'C');\n  document.getElementById('jsonInput').value=JSON.stringify(msg.tree,null,2);\n  loadJson();\n  window.parent.postMessage({type:'chart-editor:imported',key:EDITOR_KEY},'*');\n});\n\neditorRebuildLexicon();\nrenderRulesTable();\nloadExample('ii-v-i');\nif(window.parent!==window)window.parent.postMessage({type:'chart-editor:ready'},'*');\n<\/script>\n<\/body>\n<\/html>\n";
+setNotationMode(NOTATION_MODE);
+renderTables(); kRefreshModel(); updateChordClockFromInput(); parseInput();kInitEmbeddedEditor();
+</script>
+</body>
+</html>
